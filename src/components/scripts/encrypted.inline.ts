@@ -261,3 +261,25 @@ document.addEventListener("render", () => {
     init();
   }
 });
+
+// Watch for encrypted containers injected into the DOM (e.g. by popovers).
+// Popovers fetch page HTML and append elements without firing nav/render events,
+// so a MutationObserver ensures the password prompt is initialized.
+const observer = new MutationObserver((mutations) => {
+  for (const mutation of mutations) {
+    for (const node of mutation.addedNodes) {
+      if (!(node instanceof HTMLElement)) continue;
+      // Check if the added node is or contains an uninitialized encrypted container
+      const containers = node.classList?.contains("encrypted-page")
+        ? [node]
+        : [...node.querySelectorAll(".encrypted-page")];
+      const uninitialized = containers.filter((c) => !c.querySelector(".encrypted-page-form"));
+      if (uninitialized.length > 0) {
+        init();
+        return;
+      }
+    }
+  }
+});
+
+observer.observe(document.body, { childList: true, subtree: true });

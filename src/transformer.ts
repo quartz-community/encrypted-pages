@@ -90,7 +90,7 @@ const rehypeEncryptedPages = (options: EncryptedPagesOptions): Plugin<[], HastRo
       type: "element",
       tagName: "div",
       properties: {
-        className: ["encrypted-page"],
+        className: ["encrypted-page", "popover-hint"],
         "data-encrypted": encryptedData,
         "data-iterations": String(options.iterations),
       },
