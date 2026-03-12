@@ -1,22 +1,23 @@
 {
-  "name": "@quartz-community/plugin-template",
+  "name": "@quartz-community/encrypted-pages",
   "version": "0.1.0",
-  "description": "Template repository for Quartz community plugins.",
+  "description": "Password-protected encrypted pages for Quartz. Encrypts page content at build time with AES-256-GCM and decrypts client-side using the Web Crypto API.",
   "type": "module",
   "license": "MIT",
   "author": "Quartz Community",
   "homepage": "https://quartz.jzhao.xyz",
   "repository": {
     "type": "git",
-    "url": "https://github.com/quartz-community/plugin-template"
+    "url": "https://github.com/quartz-community/encrypted-pages"
   },
   "keywords": [
     "quartz",
     "quartz-plugin",
-    "plugin-template",
-    "remark",
+    "encrypted-pages",
+    "password-protected",
+    "encryption",
+    "aes-gcm",
     "rehype",
-    "mdast",
     "hast"
   ],
   "files": [
@@ -67,20 +68,14 @@
   },
   "dependencies": {
     "@quartz-community/types": "github:quartz-community/types",
-    "mdast-util-find-and-replace": "^3.0.1",
-    "rehype-slug": "^6.0.0",
-    "remark-gfm": "^4.0.1",
-    "remark-parse": "^11.0.0",
-    "remark-stringify": "^11.0.0",
+    "hast-util-to-html": "^9.0.4",
     "tsup": "^8.5.0",
     "typescript": "^5.9.3",
     "unified": "^11.0.5",
-    "unist-util-visit": "^5.0.0",
     "vfile": "^6.0.3"
   },
   "devDependencies": {
     "@types/hast": "^3.0.4",
-    "@types/mdast": "^4.0.4",
     "@types/node": "^24.10.0",
     "@typescript-eslint/eslint-plugin": "^7.18.0",
     "@typescript-eslint/parser": "^7.18.0",
@@ -92,30 +87,40 @@
     "vitest": "^2.1.9"
   },
   "quartz": {
-    "name": "plugin-template",
-    "displayName": "Plugin Template",
+    "name": "encrypted-pages",
+    "displayName": "Encrypted Pages",
     "category": "transformer",
     "version": "1.0.0",
     "quartzVersion": ">=5.0.0",
     "dependencies": [],
-    "defaultOrder": 50,
+    "defaultOrder": 900,
     "defaultEnabled": true,
-    "defaultOptions": {},
+    "defaultOptions": {
+      "visibility": "icon",
+      "iterations": 600000,
+      "passwordField": "password"
+    },
     "optionSchema": {
-      "highlightToken": {
+      "visibility": {
         "type": "enum",
         "values": [
-          "==",
-          "**",
-          "~~"
+          "visible",
+          "icon",
+          "hidden"
         ]
+      },
+      "iterations": {
+        "type": "number"
+      },
+      "passwordField": {
+        "type": "string"
       }
     },
     "components": {
-      "ExampleComponent": {
-        "displayName": "Example Component",
-        "defaultPosition": "right",
-        "defaultPriority": 50
+      "EncryptedPage": {
+        "displayName": "Encrypted Page",
+        "defaultPosition": "body",
+        "defaultPriority": 100
       }
     }
   },

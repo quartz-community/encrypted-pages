@@ -19,44 +19,46 @@ export type {
   QuartzPageTypePluginInstance,
 } from "@quartz-community/types";
 
-export interface ExampleTransformerOptions {
-  /** Token used to highlight text, defaults to ==highlight== */
-  highlightToken: string;
-  /** Add a CSS class to all headings in the rendered HTML. */
-  headingClass: string;
-  /** Enable remark-gfm for tables/task lists. */
-  enableGfm: boolean;
-  /** Enable adding slug IDs to headings. */
-  addHeadingSlugs: boolean;
+/** How encrypted pages appear in graph/explorer/backlinks. */
+export type EncryptedPageVisibility = "visible" | "icon" | "hidden";
+
+export interface EncryptedPagesOptions {
+  /**
+   * How encrypted pages appear in the graph, explorer, and backlinks.
+   *
+   * - `"visible"` — Title shown normally, content is encrypted.
+   * - `"icon"` — Title shown with a lock icon indicator.
+   * - `"hidden"` — Completely hidden from graph/explorer.
+   *
+   * @default "icon"
+   */
+  visibility: EncryptedPageVisibility;
+
+  /**
+   * PBKDF2 iteration count for key derivation.
+   * Higher = slower brute-force attacks, but also slower page unlock.
+   *
+   * @default 600_000
+   */
+  iterations: number;
+
+  /**
+   * Frontmatter field name that holds the page password.
+   *
+   * @default "password"
+   */
+  passwordField: string;
 }
 
-export interface ExampleFilterOptions {
-  /** Allow pages marked draft: true to publish. */
-  allowDrafts: boolean;
-  /** Exclude pages that contain any of these frontmatter tags. */
-  excludeTags: string[];
-  /** Exclude paths that start with any of these prefixes (relative to content root). */
-  excludePathPrefixes: string[];
-}
-
-export interface ExampleEmitterOptions {
-  /** Filename to emit at the site root. */
-  manifestSlug: string;
-  /** Whether to include the frontmatter block in the manifest. */
-  includeFrontmatter: boolean;
-  /** Extra metadata to write at the top level of the manifest. */
-  metadata: Record<string, unknown>;
-  /** Optional hook to transform the emitted manifest JSON string. */
-  transformManifest?: (json: string) => string;
-  /** Add a custom class to the emitted manifest <script> tag if used in HTML. */
-  manifestScriptClass?: string;
-}
-
-export interface ExampleComponentOptions {
-  /** Text to prefix before the title */
-  prefix?: string;
-  /** Text to suffix after the title */
-  suffix?: string;
-  /** CSS class name to apply */
-  className?: string;
+export interface EncryptedPageFilterOptions {
+  /**
+   * How encrypted pages appear in content indices (search, RSS, sitemap).
+   *
+   * - `"visible"` — Page appears in index with title but no content.
+   * - `"icon"` — Same as visible (included in index, no content leak).
+   * - `"hidden"` — Page is excluded from content index, RSS, and sitemap.
+   *
+   * @default "icon"
+   */
+  visibility: EncryptedPageVisibility;
 }

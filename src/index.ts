@@ -1,15 +1,10 @@
-export { ExampleTransformer } from "./transformer";
-export { ExampleFilter } from "./filter";
-export { ExampleEmitter } from "./emitter";
-export { default as ExampleComponent } from "./components/ExampleComponent";
+export { EncryptedPages } from "./transformer";
+export { EncryptedPageFilter } from "./filter";
+export { default as EncryptedPage } from "./components/EncryptedPage";
 
-export type {
-  ExampleTransformerOptions,
-  ExampleFilterOptions,
-  ExampleEmitterOptions,
-} from "./types";
+export type { EncryptedPagesOptions, EncryptedPageFilterOptions } from "./types";
 
-export type { ExampleComponentOptions } from "./components/ExampleComponent";
+export type { EncryptedPageComponentOptions } from "./components/EncryptedPage";
 
 // Re-export shared types from @quartz-community/types
 export type {
