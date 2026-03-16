@@ -55,8 +55,8 @@
   },
   "peerDependencies": {
     "@jackyzha0/quartz": "^4.5.2",
-    "preact": "^10.0.0",
     "hast-util-to-html": "^9.0.4",
+    "preact": "^10.0.0",
     "unified": "^11.0.5",
     "vfile": "^6.0.3"
   },
@@ -93,6 +93,7 @@
     "sass": "^1.97.3",
     "tsup": "^8.5.0",
     "typescript": "^5.9.3",
+    "unified": "^11.0.5",
     "vitest": "^2.1.9"
   },
   "quartz": {
