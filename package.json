@@ -55,9 +55,7 @@
   },
   "peerDependencies": {
     "@jackyzha0/quartz": "^4.5.2",
-    "hast-util-to-html": "^9.0.4",
     "preact": "^10.0.0",
-    "unified": "^11.0.5",
     "vfile": "^6.0.3"
   },
   "peerDependenciesMeta": {
@@ -66,12 +64,6 @@
     },
     "preact": {
       "optional": false
-    },
-    "hast-util-to-html": {
-      "optional": true
-    },
-    "unified": {
-      "optional": true
     },
     "vfile": {
       "optional": true
