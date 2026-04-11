@@ -80,10 +80,10 @@ All options below are set at the single plugin-entry level and are shared betwee
 When an encrypted page is marked `unlisted: true`:
 
 - The page HTML is still emitted at its normal URL.
-- It is **absent** from `contentIndex.json`, RSS, sitemap, and every server-side listing that respects the `unlisted` convention (backlinks, recent-notes, folder-page, tag-page).
+- It is **absent** from `contentIndex.json`, RSS, sitemap, and every server-side listing that respects the `unlisted` convention (backlinks, recent-notes, folder-page, tag-page, and bases views from `@quartz-community/bases-page`).
 - Its metadata (slug, title, links, tags) is encrypted with the page's own password and emitted to `static/encryptedContentIndex.json` in an opaque, flat JSON array. No slugs or titles leak to anonymous visitors.
 - On any page load, if the user has cached passwords in sessionStorage from a previous successful decryption, the client script fetches the shadow index, decrypts entries matching those passwords, and patches the in-memory content index in place. A `content-index-updated` event is dispatched so graph, explorer, and search reinitialize with the unlocked entries.
-- Server-side rendered listings (backlinks, recent-notes, folder-page, tag-page) remain statically hidden even after client-side decryption. This is a deliberate trade-off: those surfaces are HTML baked at build time and cannot be patched client-side.
+- Server-side rendered listings (backlinks, recent-notes, folder-page, tag-page, **bases views**) remain statically hidden even after client-side decryption. This is a deliberate trade-off: those surfaces are HTML baked at build time and cannot be patched client-side. Graph, explorer, and search all re-hydrate from the patched in-memory content index and show newly-unlocked pages for the rest of the session — base views do not, because they were fully materialized at build time.
 
 ## How `stealth` works
 
