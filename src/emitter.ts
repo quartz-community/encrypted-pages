@@ -15,6 +15,7 @@ export const SHADOW_INDEX_VERSION = 1 as const;
 
 const defaultOptions: EncryptedContentIndexOptions = {
   outputPath: "static/encryptedContentIndex.json",
+  passwordField: "password",
 };
 
 export interface ShadowIndexBlob {
@@ -76,7 +77,7 @@ export const EncryptedContentIndex: QuartzEmitterPlugin<Partial<EncryptedContent
   const options = { ...defaultOptions, ...userOptions };
 
   const emitAll = async (ctx: BuildCtx, content: ProcessedContent[]): Promise<FilePath[]> => {
-    const passwordField = readPasswordFieldFromCtx(ctx);
+    const passwordField = options.passwordField;
     const entries: ShadowIndexBlob[] = [];
 
     for (const [tree, file] of content) {
@@ -117,17 +118,6 @@ export const EncryptedContentIndex: QuartzEmitterPlugin<Partial<EncryptedContent
     partialEmit: emitAll,
   };
 };
-
-function readPasswordFieldFromCtx(ctx: BuildCtx): string {
-  const plugins = ctx.cfg?.plugins as
-    | { transformers?: Array<{ name?: string; options?: { passwordField?: string } }> }
-    | undefined;
-  const transformers = plugins?.transformers;
-  if (!Array.isArray(transformers)) return "password";
-  const encPlugin = transformers.find((t) => t?.name === "EncryptedPages");
-  const field = encPlugin?.options?.passwordField;
-  return typeof field === "string" && field.length > 0 ? field : "password";
-}
 
 function extractIterationsFromTree(tree: Root): number {
   for (const child of tree.children ?? []) {

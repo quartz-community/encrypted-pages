@@ -3,7 +3,7 @@ import type { PluggableList, Plugin } from "unified";
 import type { Root as HastRoot, Element, ElementContent } from "hast";
 import type { VFile } from "vfile";
 import { toHtml } from "hast-util-to-html";
-import type { BuildCtx, QuartzTransformerPlugin } from "@quartz-community/types";
+import type { QuartzTransformerPlugin } from "@quartz-community/types";
 import type { EncryptedPagesOptions } from "./types";
 
 const ALGORITHM = "aes-256-gcm";
@@ -51,22 +51,6 @@ export function decrypt(encryptedBase64: string, password: string, iterations: n
   return decipher.update(ciphertext, undefined, "utf8") + decipher.final("utf8");
 }
 
-function warnIfEmitterMissing(ctx: BuildCtx): void {
-  const plugins = ctx.cfg?.plugins as { emitters?: Array<{ name?: string }> } | undefined;
-  const emitters = plugins?.emitters;
-  if (!Array.isArray(emitters)) return;
-  const hasEmitter = emitters.some((e) => e?.name === "EncryptedContentIndex");
-  if (hasEmitter) return;
-
-  console.warn(
-    "[EncryptedPages] `unlistWhenEncrypted: true` is set but the companion " +
-      "`EncryptedContentIndex` emitter is not registered in plugins.emitters. " +
-      "Unlisted encrypted pages will be hidden from graph/explorer/search " +
-      "even after successful client-side decryption. Add `EncryptedContentIndex()` " +
-      "to your emitters list to enable the shadow content index.",
-  );
-}
-
 const rehypeEncryptedPages = (options: EncryptedPagesOptions): Plugin<[], HastRoot> => {
   return () => (tree: HastRoot, file: VFile) => {
     const frontmatter = (file.data?.frontmatter ?? {}) as Record<string, unknown>;
@@ -111,14 +95,9 @@ export const EncryptedPages: QuartzTransformerPlugin<Partial<EncryptedPagesOptio
   userOptions?: Partial<EncryptedPagesOptions>,
 ) => {
   const options = { ...defaultOptions, ...userOptions };
-  let warned = false;
   return {
     name: "EncryptedPages",
-    htmlPlugins(ctx: BuildCtx): PluggableList {
-      if (options.unlistWhenEncrypted && !warned) {
-        warnIfEmitterMissing(ctx);
-        warned = true;
-      }
+    htmlPlugins(): PluggableList {
       return [rehypeEncryptedPages(options)];
     },
   };

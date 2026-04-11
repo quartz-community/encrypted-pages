@@ -31,24 +31,7 @@ unlisted: true
 
 ## Configuration
 
-### quartz.config.ts
-
-```ts
-import * as ExternalPlugin from "./.quartz/plugins";
-
-// plugins.transformers:
-ExternalPlugin.CrawlLinks(),
-ExternalPlugin.EncryptedPages({
-  iterations: 600_000,
-  passwordField: "password",
-  unlistWhenEncrypted: true,
-}),
-
-// plugins.emitters:
-ExternalPlugin.EncryptedContentIndex(),
-```
-
-**Plugin ordering matters.** `EncryptedPages` replaces the entire HAST tree of an encrypted page with an opaque ciphertext container, so any transformer that must see the real HTML (in particular `CrawlLinks`, which populates `file.data.links` for the shadow content index) must run **before** `EncryptedPages`. The transformer emits a console warning at build time if the `EncryptedContentIndex` emitter is not registered alongside it when `unlistWhenEncrypted: true`.
+This plugin ships both a transformer (`EncryptedPages`) and an emitter (`EncryptedContentIndex`) in a single package. Quartz v5 instantiates both automatically from one config entry — you do not need to register them separately.
 
 ### quartz.config.yaml
 
@@ -61,25 +44,22 @@ ExternalPlugin.EncryptedContentIndex(),
     unlistWhenEncrypted: true
 ```
 
+**Plugin ordering matters.** `EncryptedPages` replaces the entire HAST tree of an encrypted page with an opaque ciphertext container, so any transformer that must see the real HTML — in particular `CrawlLinks`, which populates `file.data.links` for the shadow content index — must run **before** `EncryptedPages`. Use the `order` field in your config to ensure `CrawlLinks` has a lower order value than `EncryptedPages`.
+
 ### Component
 
 Add the `EncryptedPage` component to your body layout in `quartz.layout.ts`.
 
 ## Options
 
-### `EncryptedPages` (transformer)
+All options below are set at the single plugin-entry level and are shared between the transformer and the emitter. Quartz passes the same merged options object to both factories automatically.
 
-| Option                | Type      | Default      | Description                                                                                                                                                                                                                                                                                                      |
-| --------------------- | --------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `iterations`          | `number`  | `600000`     | PBKDF2 iteration count for key derivation. Higher is more secure but slower to unlock.                                                                                                                                                                                                                           |
-| `passwordField`       | `string`  | `"password"` | Frontmatter field name that holds the page password.                                                                                                                                                                                                                                                             |
-| `unlistWhenEncrypted` | `boolean` | `false`      | When `true`, encrypted pages are marked `file.data.unlisted = true`, hiding them from every build-time listing surface that respects the `unlisted` convention (contentIndex, RSS, sitemap, backlinks, recent-notes, folder-page, tag-page, graph, explorer, search). Per-page `frontmatter.unlisted` overrides. |
-
-### `EncryptedContentIndex` (emitter)
-
-| Option       | Type     | Default                               | Description                                                            |
-| ------------ | -------- | ------------------------------------- | ---------------------------------------------------------------------- |
-| `outputPath` | `string` | `"static/encryptedContentIndex.json"` | Output path for the shadow content index, relative to Quartz's output. |
+| Option                | Type      | Default                               | Used by              | Description                                                                                                                                                                                                                                                                                                      |
+| --------------------- | --------- | ------------------------------------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `iterations`          | `number`  | `600000`                              | transformer          | PBKDF2 iteration count for key derivation. Higher is more secure but slower to unlock.                                                                                                                                                                                                                           |
+| `passwordField`       | `string`  | `"password"`                          | transformer, emitter | Frontmatter field name that holds the page password.                                                                                                                                                                                                                                                             |
+| `unlistWhenEncrypted` | `boolean` | `false`                               | transformer          | When `true`, encrypted pages are marked `file.data.unlisted = true`, hiding them from every build-time listing surface that respects the `unlisted` convention (contentIndex, RSS, sitemap, backlinks, recent-notes, folder-page, tag-page, graph, explorer, search). Per-page `frontmatter.unlisted` overrides. |
+| `outputPath`          | `string`  | `"static/encryptedContentIndex.json"` | emitter              | Output path for the shadow content index, relative to Quartz's output directory.                                                                                                                                                                                                                                 |
 
 ### `EncryptedPage` (component)
 

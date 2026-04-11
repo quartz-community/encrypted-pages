@@ -2244,16 +2244,6 @@ function decrypt(encryptedBase64, password, iterations) {
   decipher.setAuthTag(authTag);
   return decipher.update(ciphertext, void 0, "utf8") + decipher.final("utf8");
 }
-function warnIfEmitterMissing(ctx) {
-  const plugins = ctx.cfg?.plugins;
-  const emitters = plugins?.emitters;
-  if (!Array.isArray(emitters)) return;
-  const hasEmitter = emitters.some((e) => e?.name === "EncryptedContentIndex");
-  if (hasEmitter) return;
-  console.warn(
-    "[EncryptedPages] `unlistWhenEncrypted: true` is set but the companion `EncryptedContentIndex` emitter is not registered in plugins.emitters. Unlisted encrypted pages will be hidden from graph/explorer/search even after successful client-side decryption. Add `EncryptedContentIndex()` to your emitters list to enable the shadow content index."
-  );
-}
 var rehypeEncryptedPages = (options) => {
   return () => (tree, file) => {
     const frontmatter = file.data?.frontmatter ?? {};
@@ -2288,21 +2278,17 @@ var rehypeEncryptedPages = (options) => {
 };
 var EncryptedPages = (userOptions) => {
   const options = { ...defaultOptions, ...userOptions };
-  let warned = false;
   return {
     name: "EncryptedPages",
-    htmlPlugins(ctx) {
-      if (options.unlistWhenEncrypted && !warned) {
-        warnIfEmitterMissing(ctx);
-        warned = true;
-      }
+    htmlPlugins() {
       return [rehypeEncryptedPages(options)];
     }
   };
 };
 var SHADOW_INDEX_VERSION = 1;
 var defaultOptions2 = {
-  outputPath: "static/encryptedContentIndex.json"
+  outputPath: "static/encryptedContentIndex.json",
+  passwordField: "password"
 };
 function buildShadowEntry(data) {
   const slug = data.slug;
@@ -2328,7 +2314,7 @@ function buildShadowEntry(data) {
 var EncryptedContentIndex = (userOptions) => {
   const options = { ...defaultOptions2, ...userOptions };
   const emitAll = async (ctx, content) => {
-    const passwordField = readPasswordFieldFromCtx(ctx);
+    const passwordField = options.passwordField;
     const entries = [];
     for (const [tree, file] of content) {
       const data = file.data ?? {};
@@ -2360,14 +2346,6 @@ var EncryptedContentIndex = (userOptions) => {
     partialEmit: emitAll
   };
 };
-function readPasswordFieldFromCtx(ctx) {
-  const plugins = ctx.cfg?.plugins;
-  const transformers = plugins?.transformers;
-  if (!Array.isArray(transformers)) return "password";
-  const encPlugin = transformers.find((t) => t?.name === "EncryptedPages");
-  const field = encPlugin?.options?.passwordField;
-  return typeof field === "string" && field.length > 0 ? field : "password";
-}
 function extractIterationsFromTree(tree) {
   for (const child of tree.children ?? []) {
     if (child.type !== "element") continue;

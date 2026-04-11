@@ -70,4 +70,15 @@ export interface EncryptedContentIndexOptions {
    * @default "static/encryptedContentIndex.json"
    */
   outputPath: string;
+
+  /**
+   * Frontmatter field name that holds the page password. Must match the
+   * `passwordField` used by the companion {@link EncryptedPages} transformer.
+   * When both plugins are loaded from the same package entry in
+   * quartz.config.yaml, Quartz passes the same merged options to both,
+   * so this field is automatically kept in sync.
+   *
+   * @default "password"
+   */
+  passwordField: string;
 }

@@ -13,9 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `unlistWhenEncrypted` option on the `EncryptedPages` transformer. When `true`, encrypted pages are marked `file.data.unlisted = true`, hiding them from every build-time listing surface that respects the `unlisted` convention (contentIndex, RSS, sitemap, backlinks, recent-notes, folder-page, tag-page, graph, explorer, search) while still emitting the HTML so the page remains accessible by direct URL.
 - Per-page `unlisted: true | false` frontmatter override. Explicit `unlisted: false` forces the page listed even when `unlistWhenEncrypted` is set.
 - Client-side shadow-index unlocking: on every page load with cached passwords, the client script fetches the shadow index, decrypts entries with cached passwords, patches the resolved `fetchData` object in place, and dispatches `content-index-updated` so graph, explorer, and search re-initialize with the unlocked pages.
-- Build-time warning when `unlistWhenEncrypted: true` is set but the companion `EncryptedContentIndex` emitter is not registered.
 - `encryptAesGcm`, `decrypt`, and `SHADOW_INDEX_VERSION` exports for test and extension use.
 - `ShadowIndexBlob`, `ShadowIndexFile`, and `ShadowContentIndexEntry` type exports.
+- `EncryptedContentIndexOptions.passwordField` (default `"password"`) so the emitter reads the frontmatter password field from its own merged options rather than spelunking `ctx.cfg.plugins.transformers` at emit time.
+- `outputPath` field in the package manifest's `defaultOptions` and `optionSchema` so users can override the shadow-index output path from `quartz.config.yaml`.
+
+### Fixed
+
+- **Shadow content index emitter now actually runs.** Changed `package.json` > `quartz.category` from `"transformer"` to `["transformer", "emitter"]` so Quartz v5's plugin loader instantiates both the transformer and the emitter from the single config entry. Previously, Quartz read `"transformer"` and only ever called `findFactory(module, "transformer")`, so `EncryptedContentIndex` was exported from the module but never invoked — `static/encryptedContentIndex.json` was never written. A user's single `- source: github:quartz-community/encrypted-pages` entry in `quartz.config.yaml` now correctly produces both the transformer and the emitter instances, and both factories receive the same merged options object.
 
 ### Removed
 
@@ -23,8 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Breaking:** `visibility` option on the `EncryptedPages` transformer. It set a `file.data.encryptedVisibility` flag that nothing in the Quartz v5 ecosystem read — the option had no effect.
 - **Breaking:** `EncryptedPagesOptions.visibility` type field.
 - **Breaking:** `EncryptedPageFilterOptions` type export.
+- The build-time warning for a missing `EncryptedContentIndex` emitter. Quartz v5's plugin loader now instantiates both the transformer and the emitter automatically from the same config entry (via the `category: ["transformer", "emitter"]` manifest), so the warning is obsolete.
 
 ### Changed
 
-- **Breaking:** The shadow content index requires the `EncryptedContentIndex` emitter to be registered. If it is missing but `unlistWhenEncrypted` is `true`, a console warning is logged at build time and unlisted encrypted pages will not be dynamically revealed after client-side decryption.
-- Plugin ordering requirement: `EncryptedPages` must run after `CrawlLinks` (or any other transformer that populates `file.data.links`) in the `htmlPlugins` chain. Documented in README.
+- Plugin ordering requirement: `EncryptedPages` must run after `CrawlLinks` (or any other transformer that populates `file.data.links`) in the `htmlPlugins` chain. Use the `order` field in `quartz.config.yaml` to control this. Documented in README.
+- The README no longer instructs users to register the emitter separately — Quartz v5 handles that automatically from a single config entry.
