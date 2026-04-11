@@ -3,7 +3,7 @@ import type { PluggableList, Plugin } from "unified";
 import type { Root as HastRoot, Element, ElementContent } from "hast";
 import type { VFile } from "vfile";
 import { toHtml } from "hast-util-to-html";
-import type { QuartzTransformerPlugin } from "@quartz-community/types";
+import type { BuildCtx, QuartzTransformerPlugin } from "@quartz-community/types";
 import type { EncryptedPagesOptions } from "./types";
 
 const ALGORITHM = "aes-256-gcm";
@@ -13,17 +13,12 @@ const SALT_LENGTH = 16;
 const AUTH_TAG_LENGTH = 16;
 
 const defaultOptions: EncryptedPagesOptions = {
-  visibility: "icon",
   iterations: 600_000,
   passwordField: "password",
+  unlistWhenEncrypted: false,
 };
 
-/**
- * Encrypts plaintext using AES-256-GCM with PBKDF2 key derivation.
- *
- * Output format (base64-encoded): salt(16) + iv(12) + authTag(16) + ciphertext
- */
-function encrypt(plaintext: string, password: string, iterations: number): string {
+export function encryptAesGcm(plaintext: string, password: string, iterations: number): string {
   const salt = crypto.randomBytes(SALT_LENGTH);
   const iv = crypto.randomBytes(IV_LENGTH);
 
@@ -37,10 +32,6 @@ function encrypt(plaintext: string, password: string, iterations: number): strin
   return result.toString("base64");
 }
 
-/**
- * Decrypts base64-encoded data encrypted by the `encrypt` function above.
- * Used in tests to verify roundtrip correctness.
- */
 export function decrypt(encryptedBase64: string, password: string, iterations: number): string {
   const buffer = Buffer.from(encryptedBase64, "base64");
 
@@ -60,16 +51,22 @@ export function decrypt(encryptedBase64: string, password: string, iterations: n
   return decipher.update(ciphertext, undefined, "utf8") + decipher.final("utf8");
 }
 
-/**
- * Rehype plugin that encrypts the page body when a password is set in frontmatter.
- *
- * The plugin:
- * 1. Checks frontmatter for the configured password field.
- * 2. Serializes the HAST tree to HTML.
- * 3. Encrypts the HTML using AES-256-GCM with PBKDF2 key derivation.
- * 4. Replaces the tree children with a single `<div>` containing encrypted metadata.
- * 5. Sets flags on `file.data` so downstream plugins (filter, emitter) can detect encryption.
- */
+function warnIfEmitterMissing(ctx: BuildCtx): void {
+  const plugins = ctx.cfg?.plugins as { emitters?: Array<{ name?: string }> } | undefined;
+  const emitters = plugins?.emitters;
+  if (!Array.isArray(emitters)) return;
+  const hasEmitter = emitters.some((e) => e?.name === "EncryptedContentIndex");
+  if (hasEmitter) return;
+
+  console.warn(
+    "[EncryptedPages] `unlistWhenEncrypted: true` is set but the companion " +
+      "`EncryptedContentIndex` emitter is not registered in plugins.emitters. " +
+      "Unlisted encrypted pages will be hidden from graph/explorer/search " +
+      "even after successful client-side decryption. Add `EncryptedContentIndex()` " +
+      "to your emitters list to enable the shadow content index.",
+  );
+}
+
 const rehypeEncryptedPages = (options: EncryptedPagesOptions): Plugin<[], HastRoot> => {
   return () => (tree: HastRoot, file: VFile) => {
     const frontmatter = (file.data?.frontmatter ?? {}) as Record<string, unknown>;
@@ -79,13 +76,10 @@ const rehypeEncryptedPages = (options: EncryptedPagesOptions): Plugin<[], HastRo
       return;
     }
 
-    // Serialize the entire tree to HTML
     const html = toHtml(tree, { allowDangerousHtml: true });
 
-    // Encrypt the HTML content
-    const encryptedData = encrypt(html, password, options.iterations);
+    const encryptedData = encryptAesGcm(html, password, options.iterations);
 
-    // Build the encrypted container element
     const encryptedContainer: Element = {
       type: "element",
       tagName: "div",
@@ -97,34 +91,34 @@ const rehypeEncryptedPages = (options: EncryptedPagesOptions): Plugin<[], HastRo
       children: [],
     };
 
-    // Replace tree children with the encrypted container
     tree.children = [encryptedContainer as ElementContent];
 
-    // Set flags for downstream plugins
-    (file.data as Record<string, unknown>).encrypted = true;
-    (file.data as Record<string, unknown>).encryptedVisibility = options.visibility;
+    const data = file.data as Record<string, unknown>;
+    data.encrypted = true;
+    data.text = "";
+    data.description = "";
 
-    // Clear plaintext from file.data to prevent content leakage through search index
-    (file.data as Record<string, unknown>).text = "";
-    (file.data as Record<string, unknown>).description = "";
+    const frontmatterUnlisted = frontmatter.unlisted;
+    if (typeof frontmatterUnlisted === "boolean") {
+      data.unlisted = frontmatterUnlisted;
+    } else if (options.unlistWhenEncrypted) {
+      data.unlisted = true;
+    }
   };
 };
 
-/**
- * Encrypted pages transformer.
- *
- * Reads a password from the page's frontmatter and encrypts the rendered HTML
- * at build time using AES-256-GCM with PBKDF2 key derivation. The encrypted
- * content is stored as a data attribute and decrypted client-side using the
- * Web Crypto API.
- */
 export const EncryptedPages: QuartzTransformerPlugin<Partial<EncryptedPagesOptions>> = (
   userOptions?: Partial<EncryptedPagesOptions>,
 ) => {
   const options = { ...defaultOptions, ...userOptions };
+  let warned = false;
   return {
     name: "EncryptedPages",
-    htmlPlugins(): PluggableList {
+    htmlPlugins(ctx: BuildCtx): PluggableList {
+      if (options.unlistWhenEncrypted && !warned) {
+        warnIfEmitterMissing(ctx);
+        warned = true;
+      }
       return [rehypeEncryptedPages(options)];
     },
   };

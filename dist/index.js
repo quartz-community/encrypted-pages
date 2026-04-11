@@ -1,4 +1,7 @@
 import crypto from 'crypto';
+import path from 'path';
+import fs from 'fs/promises';
+import { joinSegments } from '@quartz-community/types';
 import { jsx } from 'preact/jsx-runtime';
 
 var __defProp = Object.defineProperty;
@@ -2211,12 +2214,13 @@ var ALGORITHM = "aes-256-gcm";
 var KEY_LENGTH = 32;
 var IV_LENGTH = 12;
 var SALT_LENGTH = 16;
+var AUTH_TAG_LENGTH = 16;
 var defaultOptions = {
-  visibility: "icon",
   iterations: 6e5,
-  passwordField: "password"
+  passwordField: "password",
+  unlistWhenEncrypted: false
 };
-function encrypt(plaintext, password, iterations) {
+function encryptAesGcm(plaintext, password, iterations) {
   const salt = crypto.randomBytes(SALT_LENGTH);
   const iv = crypto.randomBytes(IV_LENGTH);
   const key2 = crypto.pbkdf2Sync(password, salt, iterations, KEY_LENGTH, "sha256");
@@ -2226,6 +2230,30 @@ function encrypt(plaintext, password, iterations) {
   const result = Buffer.concat([salt, iv, authTag, encrypted]);
   return result.toString("base64");
 }
+function decrypt(encryptedBase64, password, iterations) {
+  const buffer = Buffer.from(encryptedBase64, "base64");
+  const salt = buffer.subarray(0, SALT_LENGTH);
+  const iv = buffer.subarray(SALT_LENGTH, SALT_LENGTH + IV_LENGTH);
+  const authTag = buffer.subarray(
+    SALT_LENGTH + IV_LENGTH,
+    SALT_LENGTH + IV_LENGTH + AUTH_TAG_LENGTH
+  );
+  const ciphertext = buffer.subarray(SALT_LENGTH + IV_LENGTH + AUTH_TAG_LENGTH);
+  const key2 = crypto.pbkdf2Sync(password, salt, iterations, KEY_LENGTH, "sha256");
+  const decipher = crypto.createDecipheriv(ALGORITHM, key2, iv);
+  decipher.setAuthTag(authTag);
+  return decipher.update(ciphertext, void 0, "utf8") + decipher.final("utf8");
+}
+function warnIfEmitterMissing(ctx) {
+  const plugins = ctx.cfg?.plugins;
+  const emitters = plugins?.emitters;
+  if (!Array.isArray(emitters)) return;
+  const hasEmitter = emitters.some((e) => e?.name === "EncryptedContentIndex");
+  if (hasEmitter) return;
+  console.warn(
+    "[EncryptedPages] `unlistWhenEncrypted: true` is set but the companion `EncryptedContentIndex` emitter is not registered in plugins.emitters. Unlisted encrypted pages will be hidden from graph/explorer/search even after successful client-side decryption. Add `EncryptedContentIndex()` to your emitters list to enable the shadow content index."
+  );
+}
 var rehypeEncryptedPages = (options) => {
   return () => (tree, file) => {
     const frontmatter = file.data?.frontmatter ?? {};
@@ -2234,7 +2262,7 @@ var rehypeEncryptedPages = (options) => {
       return;
     }
     const html5 = toHtml(tree, { allowDangerousHtml: true });
-    const encryptedData = encrypt(html5, password, options.iterations);
+    const encryptedData = encryptAesGcm(html5, password, options.iterations);
     const encryptedContainer = {
       type: "element",
       tagName: "div",
@@ -2246,49 +2274,120 @@ var rehypeEncryptedPages = (options) => {
       children: []
     };
     tree.children = [encryptedContainer];
-    file.data.encrypted = true;
-    file.data.encryptedVisibility = options.visibility;
-    file.data.text = "";
-    file.data.description = "";
+    const data = file.data;
+    data.encrypted = true;
+    data.text = "";
+    data.description = "";
+    const frontmatterUnlisted = frontmatter.unlisted;
+    if (typeof frontmatterUnlisted === "boolean") {
+      data.unlisted = frontmatterUnlisted;
+    } else if (options.unlistWhenEncrypted) {
+      data.unlisted = true;
+    }
   };
 };
 var EncryptedPages = (userOptions) => {
   const options = { ...defaultOptions, ...userOptions };
+  let warned = false;
   return {
     name: "EncryptedPages",
-    htmlPlugins() {
+    htmlPlugins(ctx) {
+      if (options.unlistWhenEncrypted && !warned) {
+        warnIfEmitterMissing(ctx);
+        warned = true;
+      }
       return [rehypeEncryptedPages(options)];
     }
   };
 };
-
-// src/filter.ts
+var SHADOW_INDEX_VERSION = 1;
 var defaultOptions2 = {
-  visibility: "icon"
+  outputPath: "static/encryptedContentIndex.json"
 };
-var EncryptedPageFilter = (userOptions) => {
-  const options = { ...defaultOptions2, ...userOptions };
+function buildShadowEntry(data) {
+  const slug = data.slug;
+  if (typeof slug !== "string" || slug.length === 0) return null;
+  const frontmatter = data.frontmatter ?? {};
+  const title = typeof frontmatter.title === "string" ? frontmatter.title : "";
+  const tags = Array.isArray(frontmatter.tags) ? frontmatter.tags.filter((t) => typeof t === "string") : [];
+  const links = Array.isArray(data.links) ? data.links.filter((l) => typeof l === "string") : [];
+  const filePath = typeof data.relativePath === "string" ? data.relativePath : "";
   return {
-    name: "EncryptedPageFilter",
-    shouldPublish(_ctx, [_tree, vfile]) {
-      const data = vfile.data;
-      const isEncrypted = data.encrypted === true;
-      if (!isEncrypted) {
-        return true;
-      }
-      if (options.visibility === "hidden") {
-        return false;
-      }
-      return true;
+    slug,
+    entry: {
+      slug,
+      filePath,
+      title,
+      links,
+      tags,
+      content: "",
+      description: ""
     }
   };
+}
+var EncryptedContentIndex = (userOptions) => {
+  const options = { ...defaultOptions2, ...userOptions };
+  const emitAll = async (ctx, content) => {
+    const passwordField = readPasswordFieldFromCtx(ctx);
+    const entries = [];
+    for (const [tree, file] of content) {
+      const data = file.data ?? {};
+      if (data.encrypted !== true) continue;
+      if (data.unlisted !== true) continue;
+      const frontmatter = data.frontmatter ?? {};
+      const password = frontmatter[passwordField];
+      if (typeof password !== "string" || password.length === 0) continue;
+      const iterations = extractIterationsFromTree(tree);
+      const shadowEntry = buildShadowEntry(data);
+      if (!shadowEntry) continue;
+      const plaintext = JSON.stringify(shadowEntry);
+      const ciphertext = encryptAesGcm(plaintext, password, iterations);
+      entries.push({ ciphertext, iterations });
+    }
+    const shadowFile = {
+      version: SHADOW_INDEX_VERSION,
+      entries
+    };
+    const outputPath = joinSegments(ctx.argv.output, options.outputPath);
+    const dir = path.dirname(outputPath);
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(outputPath, JSON.stringify(shadowFile));
+    return [outputPath];
+  };
+  return {
+    name: "EncryptedContentIndex",
+    emit: emitAll,
+    partialEmit: emitAll
+  };
 };
+function readPasswordFieldFromCtx(ctx) {
+  const plugins = ctx.cfg?.plugins;
+  const transformers = plugins?.transformers;
+  if (!Array.isArray(transformers)) return "password";
+  const encPlugin = transformers.find((t) => t?.name === "EncryptedPages");
+  const field = encPlugin?.options?.passwordField;
+  return typeof field === "string" && field.length > 0 ? field : "password";
+}
+function extractIterationsFromTree(tree) {
+  for (const child of tree.children ?? []) {
+    if (child.type !== "element") continue;
+    const el = child;
+    const props = el.properties ?? {};
+    const dataIterations = props["data-iterations"];
+    if (typeof dataIterations === "string") {
+      const parsed = parseInt(dataIterations, 10);
+      if (!Number.isNaN(parsed) && parsed > 0) return parsed;
+    }
+    if (typeof dataIterations === "number" && dataIterations > 0) return dataIterations;
+  }
+  return 6e5;
+}
 
 // src/components/styles/encrypted.scss
 var encrypted_default = ".encrypted-page {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  min-height: 300px;\n  padding: 2rem;\n}\n\n.encrypted-page-form {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  gap: 1rem;\n  max-width: 400px;\n  width: 100%;\n  text-align: center;\n}\n\n.encrypted-page-icon {\n  color: var(--gray, #6b7280);\n  opacity: 0.6;\n}\n\n.encrypted-page-label {\n  color: var(--darkgray, #4b5563);\n  font-size: 0.95rem;\n  margin: 0;\n  line-height: 1.5;\n}\n\n.encrypted-page-input-row {\n  display: flex;\n  gap: 0.5rem;\n  width: 100%;\n}\n\n.encrypted-page-input {\n  flex: 1;\n  padding: 0.5rem 0.75rem;\n  border: 1px solid var(--lightgray, #d1d5db);\n  border-radius: 4px;\n  font-size: 0.9rem;\n  font-family: inherit;\n  background: var(--light, #fff);\n  color: var(--dark, #111);\n  outline: none;\n  transition: border-color 0.15s ease;\n}\n.encrypted-page-input:focus {\n  border-color: var(--secondary, #3b82f6);\n}\n.encrypted-page-input:disabled {\n  opacity: 0.6;\n  cursor: not-allowed;\n}\n\n.encrypted-page-submit {\n  padding: 0.5rem 1.25rem;\n  border: none;\n  border-radius: 4px;\n  font-size: 0.9rem;\n  font-family: inherit;\n  font-weight: 600;\n  cursor: pointer;\n  background: var(--secondary, #3b82f6);\n  color: var(--light, #fff);\n  transition: background 0.15s ease, opacity 0.15s ease;\n  white-space: nowrap;\n}\n.encrypted-page-submit:hover:not(:disabled) {\n  opacity: 0.9;\n}\n.encrypted-page-submit:disabled {\n  opacity: 0.6;\n  cursor: not-allowed;\n}\n\n.encrypted-page-error {\n  color: var(--red, #dc2626);\n  font-size: 0.85rem;\n  margin: 0;\n}";
 
 // src/components/scripts/encrypted.inline.ts
-var encrypted_inline_default = `function g(t){let e=atob(t),n=new Uint8Array(e.length);for(let r=0;r<e.length;r++)n[r]=e.charCodeAt(r);return n}async function h(t,e,n){let r=new TextEncoder,s=await window.crypto.subtle.importKey("raw",r.encode(t),"PBKDF2",!1,["deriveKey"]);return window.crypto.subtle.deriveKey({name:"PBKDF2",salt:e,iterations:n,hash:"SHA-256"},s,{name:"AES-GCM",length:256},!1,["decrypt"])}async function w(t,e,n){let r=g(t),s=r.slice(0,16),a=r.slice(16,28),o=r.slice(28,44),i=r.slice(44),c=new Uint8Array(i.length+o.length);c.set(i,0),c.set(o,i.length);let d=await h(e,s,n),f=await window.crypto.subtle.decrypt({name:"AES-GCM",iv:a},d,c);return new TextDecoder().decode(f)}function y(){try{let t=sessionStorage.getItem("encrypted-pages-passwords");if(!t)return[];let e=JSON.parse(t);return Array.isArray(e)?e:[]}catch{return[]}}function T(t){let e=y();e.includes(t)||(e.push(t),sessionStorage.setItem("encrypted-pages-passwords",JSON.stringify(e)))}function m(t,e){let n=t.querySelector(".encrypted-page-error");n&&(n.textContent=e,n.style.display="block")}function E(t){let e=t.querySelector(".encrypted-page-error");e&&(e.style.display="none",e.textContent="")}function u(t,e){let n=t.querySelector(".encrypted-page-submit"),r=t.querySelector(".encrypted-page-input");n&&(n.disabled=e,n.textContent=e?"Decrypting\\u2026":"Unlock"),r&&(r.disabled=e)}async function l(t,e){let n=t.getAttribute("data-encrypted"),r=parseInt(t.getAttribute("data-iterations")||"600000",10);if(!n)return!1;try{let s=await w(n,e,r);if(t.parentElement){let o=document.createElement("div");o.innerHTML=s,t.replaceWith(...o.childNodes)}return T(e),document.dispatchEvent(new CustomEvent("render")),!0}catch{return!1}}function p(){let t=document.querySelectorAll(".encrypted-page");if(t.length!==0)for(let e of t){if(e.querySelector(".encrypted-page-form")||!e.getAttribute("data-encrypted"))continue;let r=document.createElement("div");r.className="encrypted-page-form",r.innerHTML=['<div class="encrypted-page-icon" aria-hidden="true">','<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">','<rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>','<path d="M7 11V7a5 5 0 0 1 10 0v4"></path>',"</svg>","</div>",'<p class="encrypted-page-label">This page is encrypted. Enter the password to view its content.</p>','<div class="encrypted-page-input-row">','<input type="password" class="encrypted-page-input" placeholder="Password" autocomplete="off" />','<button type="button" class="encrypted-page-submit">Unlock</button>',"</div>",'<p class="encrypted-page-error" style="display:none"></p>'].join(""),e.appendChild(r);let s=r.querySelector(".encrypted-page-input"),a=r.querySelector(".encrypted-page-submit");async function o(){let c=s?.value;if(!c)return;E(e),u(e,!0),await l(e,c)||(u(e,!1),m(e,"Incorrect password. Please try again."),s&&(s.value="",s.focus()))}a&&a.addEventListener("click",o),s&&s.addEventListener("keydown",c=>{c.key==="Enter"&&(c.preventDefault(),o())});let i=y();i.length>0&&(async()=>{for(let c of i)if(await l(e,c))return})()}}document.addEventListener("nav",()=>{p()});document.addEventListener("render",()=>{document.querySelectorAll(".encrypted-page").length>0&&p()});var L=new MutationObserver(t=>{for(let e of t)for(let n of e.addedNodes){if(!(n instanceof HTMLElement))continue;if((n.classList?.contains("encrypted-page")?[n]:[...n.querySelectorAll(".encrypted-page")]).filter(a=>!a.querySelector(".encrypted-page-form")).length>0){p();return}}});L.observe(document.body,{childList:!0,subtree:!0});
+var encrypted_inline_default = `var S="encrypted-pages-passwords",m="encrypted-pages:decryptedShadowEntries";function v(t){let e=atob(t),n=new Uint8Array(e.length);for(let r=0;r<e.length;r++)n[r]=e.charCodeAt(r);return n}async function b(t,e,n){let r=new TextEncoder,o=await window.crypto.subtle.importKey("raw",r.encode(t),"PBKDF2",!1,["deriveKey"]);return window.crypto.subtle.deriveKey({name:"PBKDF2",salt:e,iterations:n,hash:"SHA-256"},o,{name:"AES-GCM",length:256},!1,["decrypt"])}async function T(t,e,n){let r=v(t),o=r.slice(0,16),i=r.slice(16,28),c=r.slice(28,44),a=r.slice(44),s=new Uint8Array(a.length+c.length);s.set(a,0),s.set(c,a.length);let d=await b(e,o,n),l=await window.crypto.subtle.decrypt({name:"AES-GCM",iv:i},d,s);return new TextDecoder().decode(l)}function h(){try{let t=sessionStorage.getItem(S);if(!t)return[];let e=JSON.parse(t);return Array.isArray(e)?e:[]}catch{return[]}}function A(t){let e=h();e.includes(t)||(e.push(t),sessionStorage.setItem(S,JSON.stringify(e)))}function L(){try{let t=sessionStorage.getItem(m);if(!t)return{};let e=JSON.parse(t);return e&&typeof e=="object"?e:{}}catch{return{}}}function N(t){try{sessionStorage.setItem(m,JSON.stringify(t))}catch{}}function I(t,e){let n=t.querySelector(".encrypted-page-error");n&&(n.textContent=e,n.style.display="block")}function _(t){let e=t.querySelector(".encrypted-page-error");e&&(e.style.display="none",e.textContent="")}function w(t,e){let n=t.querySelector(".encrypted-page-submit"),r=t.querySelector(".encrypted-page-input");n&&(n.disabled=e,n.textContent=e?"Decrypting\\u2026":"Unlock"),r&&(r.disabled=e)}function x(){let t=document.querySelectorAll("script");for(let e of t){let r=(e.textContent??"").match(/fetch\\(["']([^"']+contentIndex\\.json)["']\\)/);if(r)return r[1].replace(/contentIndex\\.json$/,"encryptedContentIndex.json")}return new URL("static/encryptedContentIndex.json",document.baseURI).toString()}var p=null;async function H(){if(p)return p;let t=x();return p=fetch(t).then(e=>{if(!e.ok)throw new Error(\`shadow index HTTP \${e.status}\`);return e.json()}).then(e=>!e||e.version!==1||!Array.isArray(e.entries)?{version:1,entries:[]}:e).catch(()=>({version:1,entries:[]})),p}async function D(t,e,n){let r={},o={...n},i=!1;for(let c=0;c<t.entries.length;c++){let a=String(c);if(n[a]){let d=n[a];d&&d.slug&&(r[d.slug]=d.entry);continue}let s=t.entries[c];if(!(!s||typeof s.ciphertext!="string"))for(let d of e)try{let l=await T(s.ciphertext,d,s.iterations),u=JSON.parse(l);u&&typeof u.slug=="string"&&u.entry&&(r[u.slug]=u.entry,o[a]=u,i=!0);break}catch{}}return i&&N(o),r}async function G(t){let e=Object.keys(t);if(e.length!==0){try{let n=await(typeof fetchData<"u"?fetchData:Promise.resolve(null));if(!n||typeof n!="object")return;let r=n.content&&typeof n.content=="object"?n.content:n;for(let o of e)o in r||(r[o]=t[o])}catch{return}document.dispatchEvent(new CustomEvent("content-index-updated",{detail:{slugs:e}})),document.dispatchEvent(new CustomEvent("render"))}}var y=!1;async function f(){if(y)return;let t=h();if(t.length!==0){y=!0;try{let e=await H();if(!e.entries||e.entries.length===0)return;let n=L(),r=await D(e,t,n);await G(r)}finally{y=!1}}}async function E(t,e){let n=t.getAttribute("data-encrypted"),r=parseInt(t.getAttribute("data-iterations")||"600000",10);if(!n)return!1;try{let o=await T(n,e,r);if(t.parentElement){let c=document.createElement("div");c.innerHTML=o,t.replaceWith(...c.childNodes)}return A(e),document.dispatchEvent(new CustomEvent("render")),f(),!0}catch{return!1}}function g(){let t=document.querySelectorAll(".encrypted-page");if(t.length===0){f();return}for(let e of t){if(e.querySelector(".encrypted-page-form")||!e.getAttribute("data-encrypted"))continue;let r=document.createElement("div");r.className="encrypted-page-form",r.innerHTML=['<div class="encrypted-page-icon" aria-hidden="true">','<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">','<rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>','<path d="M7 11V7a5 5 0 0 1 10 0v4"></path>',"</svg>","</div>",'<p class="encrypted-page-label">This page is encrypted. Enter the password to view its content.</p>','<div class="encrypted-page-input-row">','<input type="password" class="encrypted-page-input" placeholder="Password" autocomplete="off" />','<button type="button" class="encrypted-page-submit">Unlock</button>',"</div>",'<p class="encrypted-page-error" style="display:none"></p>'].join(""),e.appendChild(r);let o=r.querySelector(".encrypted-page-input"),i=r.querySelector(".encrypted-page-submit");async function c(){let s=o?.value;if(!s)return;_(e),w(e,!0),await E(e,s)||(w(e,!1),I(e,"Incorrect password. Please try again."),o&&(o.value="",o.focus()))}i&&i.addEventListener("click",c),o&&o.addEventListener("keydown",s=>{s.key==="Enter"&&(s.preventDefault(),c())});let a=h();a.length>0&&(async()=>{for(let s of a)if(await E(e,s))return})()}f()}document.addEventListener("nav",()=>{g()});document.addEventListener("render",()=>{document.querySelectorAll(".encrypted-page").length>0&&g()});var C=new MutationObserver(t=>{for(let e of t)for(let n of e.addedNodes){if(!(n instanceof HTMLElement))continue;if((n.classList?.contains("encrypted-page")?[n]:[...n.querySelectorAll(".encrypted-page")]).filter(i=>!i.querySelector(".encrypted-page-form")).length>0){g();return}}});C.observe(document.body,{childList:!0,subtree:!0});
 `;
 var EncryptedPage_default = ((opts) => {
   const { className = "encrypted-page-wrapper" } = opts ?? {};
@@ -2300,6 +2399,6 @@ var EncryptedPage_default = ((opts) => {
   return Component;
 });
 
-export { EncryptedPage_default as EncryptedPage, EncryptedPageFilter, EncryptedPages };
+export { EncryptedContentIndex, EncryptedPage_default as EncryptedPage, EncryptedPages, SHADOW_INDEX_VERSION, decrypt, encryptAesGcm };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

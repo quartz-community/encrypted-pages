@@ -4,7 +4,12 @@ Password-protected encrypted pages for Quartz v5.
 
 ## How it works
 
-This plugin uses build-time encryption with AES-256-GCM. Decryption happens on the client side using the Web Crypto API. Key derivation is handled by PBKDF2.
+Build-time encryption with AES-256-GCM, client-side decryption via the Web Crypto API, PBKDF2-SHA256 key derivation.
+
+Two plugins work together:
+
+- **`EncryptedPages`** (transformer) — encrypts the rendered HTML of any page whose frontmatter contains a password.
+- **`EncryptedContentIndex`** (emitter) — emits a sibling shadow content index that client-side decryption uses to dynamically reveal unlisted encrypted pages in graph, explorer, and search after a successful unlock.
 
 ## Installation
 
@@ -14,12 +19,13 @@ npx quartz plugin add github:quartz-community/encrypted-pages
 
 ## Usage
 
-Add a `password` field to the frontmatter of any page you want to encrypt.
+Add a `password` field to the frontmatter of any page you want to encrypt. Optionally add `unlisted: true` to hide the page from every build-time listing surface; the page will be revealed dynamically to graph/explorer/search on successful client-side decryption.
 
 ```yaml
 ---
 title: My Secret Page
 password: mysecretpassword
+unlisted: true
 ---
 ```
 
@@ -27,33 +33,32 @@ password: mysecretpassword
 
 ### quartz.config.ts
 
-Import the plugin and add it to your configuration.
-
 ```ts
 import * as ExternalPlugin from "./.quartz/plugins";
 
-// In plugins.transformers:
+// plugins.transformers:
+ExternalPlugin.CrawlLinks(),
 ExternalPlugin.EncryptedPages({
-  visibility: "icon",
-  iterations: 600000,
+  iterations: 600_000,
   passwordField: "password",
-});
+  unlistWhenEncrypted: true,
+}),
 
-// In plugins.filters:
-ExternalPlugin.EncryptedPageFilter({ visibility: "icon" });
+// plugins.emitters:
+ExternalPlugin.EncryptedContentIndex(),
 ```
 
-### quartz.config.yaml
+**Plugin ordering matters.** `EncryptedPages` replaces the entire HAST tree of an encrypted page with an opaque ciphertext container, so any transformer that must see the real HTML (in particular `CrawlLinks`, which populates `file.data.links` for the shadow content index) must run **before** `EncryptedPages`. The transformer emits a console warning at build time if the `EncryptedContentIndex` emitter is not registered alongside it when `unlistWhenEncrypted: true`.
 
-If you use the YAML configuration format:
+### quartz.config.yaml
 
 ```yaml
 - source: github:quartz-community/encrypted-pages
   enabled: true
   options:
-    visibility: icon
     iterations: 600000
     passwordField: password
+    unlistWhenEncrypted: true
 ```
 
 ### Component
@@ -62,42 +67,59 @@ Add the `EncryptedPage` component to your body layout in `quartz.layout.ts`.
 
 ## Options
 
-### EncryptedPages (Transformer)
+### `EncryptedPages` (transformer)
 
-| Option          | Type                              | Default      | Description                                                                                                                                                |
-| --------------- | --------------------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `visibility`    | `"visible" \| "icon" \| "hidden"` | `"icon"`     | How encrypted pages appear in graph, explorer, and backlinks. `visible` shows them normally. `icon` shows them with a lock indicator. `hidden` hides them. |
-| `iterations`    | `number`                          | `600000`     | PBKDF2 iteration count for key derivation. Higher counts are more secure but slower to unlock.                                                             |
-| `passwordField` | `string`                          | `"password"` | Frontmatter field name that holds the page password.                                                                                                       |
+| Option                | Type      | Default      | Description                                                                                                                                                                                                                                                                                                      |
+| --------------------- | --------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `iterations`          | `number`  | `600000`     | PBKDF2 iteration count for key derivation. Higher is more secure but slower to unlock.                                                                                                                                                                                                                           |
+| `passwordField`       | `string`  | `"password"` | Frontmatter field name that holds the page password.                                                                                                                                                                                                                                                             |
+| `unlistWhenEncrypted` | `boolean` | `false`      | When `true`, encrypted pages are marked `file.data.unlisted = true`, hiding them from every build-time listing surface that respects the `unlisted` convention (contentIndex, RSS, sitemap, backlinks, recent-notes, folder-page, tag-page, graph, explorer, search). Per-page `frontmatter.unlisted` overrides. |
 
-### EncryptedPageFilter (Filter)
+### `EncryptedContentIndex` (emitter)
 
-| Option       | Type                              | Default  | Description                                                                                           |
-| ------------ | --------------------------------- | -------- | ----------------------------------------------------------------------------------------------------- |
-| `visibility` | `"visible" \| "icon" \| "hidden"` | `"icon"` | Controls whether encrypted pages appear in search, RSS, and sitemap. `hidden` excludes them entirely. |
+| Option       | Type     | Default                               | Description                                                            |
+| ------------ | -------- | ------------------------------------- | ---------------------------------------------------------------------- |
+| `outputPath` | `string` | `"static/encryptedContentIndex.json"` | Output path for the shadow content index, relative to Quartz's output. |
 
-### EncryptedPage (Component)
+### `EncryptedPage` (component)
 
 | Option      | Type     | Default                    | Description                          |
 | ----------- | -------- | -------------------------- | ------------------------------------ |
 | `className` | `string` | `"encrypted-page-wrapper"` | CSS class for the component wrapper. |
 
+### Frontmatter fields
+
+| Field      | Type      | Description                                                                                                                             |
+| ---------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `password` | `string`  | Enables encryption for this page. The field name is configurable via `passwordField`.                                                   |
+| `unlisted` | `boolean` | Overrides `unlistWhenEncrypted`. `true` forces the page unlisted; `false` forces it listed even when `unlistWhenEncrypted` is also set. |
+
+## How `unlisted` works
+
+When an encrypted page is marked `unlisted: true`:
+
+- The page HTML is still emitted at its normal URL.
+- It is **absent** from `contentIndex.json`, RSS, sitemap, and every server-side listing that respects the `unlisted` convention (backlinks, recent-notes, folder-page, tag-page).
+- Its metadata (slug, title, links, tags) is encrypted with the page's own password and emitted to `static/encryptedContentIndex.json` in an opaque, flat JSON array. No slugs or titles leak to anonymous visitors.
+- On any page load, if the user has cached passwords in sessionStorage from a previous successful decryption, the client script fetches the shadow index, decrypts entries matching those passwords, and patches the in-memory content index in place. A `content-index-updated` event is dispatched so graph, explorer, and search reinitialize with the unlocked entries.
+- Server-side rendered listings (backlinks, recent-notes, folder-page, tag-page) remain statically hidden even after client-side decryption. This is a deliberate trade-off: those surfaces are HTML baked at build time and cannot be patched client-side.
+
 ## Security
 
-- AES-256-GCM encryption with 16-byte salt, 12-byte IV, and 16-byte auth tag.
-- PBKDF2 SHA-256 key derivation with 600,000 iterations by default.
-- No plaintext leakage. The `file.data.text` and `file.data.description` fields are stripped.
-- Passwords are stored per-page in frontmatter. Don't commit these to public repositories.
-- Session caching uses `sessionStorage`. It clears when the browser closes.
-- This is client-side encryption for a static site. The encrypted HTML is in the page source. This protects against casual browsing but not against a determined attacker with access to the source.
+- AES-256-GCM with 16-byte salt, 12-byte IV, 16-byte auth tag.
+- PBKDF2-SHA256 with 600,000 default iterations.
+- Plaintext leakage prevention: `file.data.text` and `file.data.description` are cleared by the transformer.
+- The shadow content index entries are individually encrypted with the same password as the page they describe. An attacker downloading `encryptedContentIndex.json` learns only the number of unlisted encrypted pages and the PBKDF2 iteration count. No slugs, titles, or link relationships are exposed.
+- Passwords are cached in `sessionStorage`, which clears when the browser session ends.
+- This is client-side encryption for a static site. A determined attacker with access to the ciphertext can run an offline brute-force. Use strong passwords.
 
 ## Password caching
 
-The plugin uses `sessionStorage` to cache passwords. It enables an auto-try behavior when navigating between encrypted pages that share the same password.
+Successful passwords are cached in `sessionStorage` so subsequent encrypted pages with the same password auto-unlock. Successfully decrypted shadow entries are also cached for the session to avoid re-running PBKDF2 on every navigation.
 
-## Render event
+## Render events
 
-After a page is decrypted, a `render` CustomEvent is dispatched. Other components like the graph, TOC, and explorer can then re-initialize and display the decrypted content.
+After a page is decrypted, a `render` `CustomEvent` is dispatched. After the shadow content index is patched, a `content-index-updated` `CustomEvent` is dispatched with a `detail.slugs` array of newly-added slugs. Graph, explorer, and search re-initialize on these events.
 
 ## License
 

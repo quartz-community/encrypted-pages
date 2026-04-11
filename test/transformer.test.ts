@@ -4,7 +4,6 @@ import { createCtx } from "./helpers";
 import type { Root as HastRoot, Element } from "hast";
 import { VFile } from "vfile";
 
-/** Helper: create a simple HAST tree with an article containing text. */
 function createHastTree(text: string): HastRoot {
   return {
     type: "root",
@@ -26,7 +25,6 @@ function createHastTree(text: string): HastRoot {
   };
 }
 
-/** Helper: run the transformer's htmlPlugins on a tree + vfile. */
 async function runTransformer(
   tree: HastRoot,
   vfile: VFile,
@@ -36,7 +34,6 @@ async function runTransformer(
   const transformer = EncryptedPages(options);
   const plugins = transformer.htmlPlugins?.(ctx) ?? [];
 
-  // Each plugin is a [pluginFn] or [pluginFn, options] tuple
   for (const pluginEntry of plugins) {
     const pluginFn = Array.isArray(pluginEntry) ? pluginEntry[0] : pluginEntry;
     const attacher = pluginFn as () => (tree: HastRoot, file: VFile) => void;
@@ -55,10 +52,10 @@ describe("EncryptedPages transformer", () => {
 
     await runTransformer(tree, vfile);
 
-    // Tree should be unchanged — still has the article
     const article = tree.children[0] as Element;
     expect(article.tagName).toBe("article");
     expect((vfile.data as Record<string, unknown>).encrypted).toBeUndefined();
+    expect((vfile.data as Record<string, unknown>).unlisted).toBeUndefined();
   });
 
   it("encrypts pages with a password in frontmatter", async () => {
@@ -68,16 +65,13 @@ describe("EncryptedPages transformer", () => {
 
     await runTransformer(tree, vfile);
 
-    // Tree should now contain an encrypted-page container
     const container = tree.children[0] as Element;
     expect(container.tagName).toBe("div");
     expect((container.properties?.className as string[]) ?? []).toContain("encrypted-page");
 
-    // Should have data attributes
     expect(typeof container.properties?.["data-encrypted"]).toBe("string");
     expect(container.properties?.["data-iterations"]).toBe("600000");
 
-    // VFile should be flagged
     expect((vfile.data as Record<string, unknown>).encrypted).toBe(true);
     expect((vfile.data as Record<string, unknown>).text).toBe("");
     expect((vfile.data as Record<string, unknown>).description).toBe("");
@@ -94,7 +88,6 @@ describe("EncryptedPages transformer", () => {
     const encryptedData = container.properties?.["data-encrypted"] as string;
     expect(encryptedData).toBeTruthy();
 
-    // Decrypt using the exported decrypt function
     const decrypted = decrypt(encryptedData, "mypassword", 600_000);
     expect(decrypted).toContain("Roundtrip test content");
   });
@@ -134,7 +127,6 @@ describe("EncryptedPages transformer", () => {
     const container = tree.children[0] as Element;
     expect(container.properties?.["data-iterations"]).toBe("1000");
 
-    // Verify decryption with the correct iteration count
     const encryptedData = container.properties?.["data-encrypted"] as string;
     const decrypted = decrypt(encryptedData, "pw", 1000);
     expect(decrypted).toContain("Custom iterations");
@@ -164,13 +156,57 @@ describe("EncryptedPages transformer", () => {
     expect((vfile.data as Record<string, unknown>).encrypted).toBeUndefined();
   });
 
-  it("sets visibility metadata on encrypted pages", async () => {
+  it("does not mark encrypted pages as unlisted by default", async () => {
     const tree = createHastTree("Hidden content");
     const vfile = new VFile("");
     vfile.data = { frontmatter: { title: "Test", password: "pw" } };
 
-    await runTransformer(tree, vfile, { visibility: "hidden" });
+    await runTransformer(tree, vfile);
 
-    expect((vfile.data as Record<string, unknown>).encryptedVisibility).toBe("hidden");
+    expect((vfile.data as Record<string, unknown>).encrypted).toBe(true);
+    expect((vfile.data as Record<string, unknown>).unlisted).toBeUndefined();
+  });
+
+  it("marks encrypted pages as unlisted when unlistWhenEncrypted is true", async () => {
+    const tree = createHastTree("Hidden content");
+    const vfile = new VFile("");
+    vfile.data = { frontmatter: { title: "Test", password: "pw" } };
+
+    await runTransformer(tree, vfile, { unlistWhenEncrypted: true });
+
+    expect((vfile.data as Record<string, unknown>).encrypted).toBe(true);
+    expect((vfile.data as Record<string, unknown>).unlisted).toBe(true);
+  });
+
+  it("does not mark non-encrypted pages as unlisted even when unlistWhenEncrypted is true", async () => {
+    const tree = createHastTree("Public content");
+    const vfile = new VFile("");
+    vfile.data = { frontmatter: { title: "Public Page" } };
+
+    await runTransformer(tree, vfile, { unlistWhenEncrypted: true });
+
+    expect((vfile.data as Record<string, unknown>).encrypted).toBeUndefined();
+    expect((vfile.data as Record<string, unknown>).unlisted).toBeUndefined();
+  });
+
+  it("respects frontmatter unlisted: true override without unlistWhenEncrypted", async () => {
+    const tree = createHastTree("Secret");
+    const vfile = new VFile("");
+    vfile.data = { frontmatter: { title: "Test", password: "pw", unlisted: true } };
+
+    await runTransformer(tree, vfile);
+
+    expect((vfile.data as Record<string, unknown>).unlisted).toBe(true);
+  });
+
+  it("respects frontmatter unlisted: false override when unlistWhenEncrypted is true", async () => {
+    const tree = createHastTree("Secret");
+    const vfile = new VFile("");
+    vfile.data = { frontmatter: { title: "Test", password: "pw", unlisted: false } };
+
+    await runTransformer(tree, vfile, { unlistWhenEncrypted: true });
+
+    expect((vfile.data as Record<string, unknown>).encrypted).toBe(true);
+    expect((vfile.data as Record<string, unknown>).unlisted).toBe(false);
   });
 });

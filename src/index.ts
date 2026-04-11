@@ -1,12 +1,13 @@
-export { EncryptedPages } from "./transformer";
-export { EncryptedPageFilter } from "./filter";
+export { EncryptedPages, encryptAesGcm, decrypt } from "./transformer";
+export { EncryptedContentIndex, SHADOW_INDEX_VERSION } from "./emitter";
 export { default as EncryptedPage } from "./components/EncryptedPage";
 
-export type { EncryptedPagesOptions, EncryptedPageFilterOptions } from "./types";
+export type { EncryptedPagesOptions, EncryptedContentIndexOptions } from "./types";
+
+export type { ShadowIndexBlob, ShadowIndexFile, ShadowContentIndexEntry } from "./emitter";
 
 export type { EncryptedPageComponentOptions } from "./components/EncryptedPage";
 
-// Re-export shared types from @quartz-community/types
 export type {
   QuartzComponent,
   QuartzComponentProps,

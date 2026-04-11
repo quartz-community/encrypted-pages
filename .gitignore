@@ -37,3 +37,6 @@ coverage/
 # Cache
 .cache/
 .eslintcache
+
+# Sisyphus working artifacts (plans, research notes)
+.sisyphus/

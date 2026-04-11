@@ -19,21 +19,7 @@ export type {
   QuartzPageTypePluginInstance,
 } from "@quartz-community/types";
 
-/** How encrypted pages appear in graph/explorer/backlinks. */
-export type EncryptedPageVisibility = "visible" | "icon" | "hidden";
-
 export interface EncryptedPagesOptions {
-  /**
-   * How encrypted pages appear in the graph, explorer, and backlinks.
-   *
-   * - `"visible"` — Title shown normally, content is encrypted.
-   * - `"icon"` — Title shown with a lock icon indicator.
-   * - `"hidden"` — Completely hidden from graph/explorer.
-   *
-   * @default "icon"
-   */
-  visibility: EncryptedPageVisibility;
-
   /**
    * PBKDF2 iteration count for key derivation.
    * Higher = slower brute-force attacks, but also slower page unlock.
@@ -48,17 +34,40 @@ export interface EncryptedPagesOptions {
    * @default "password"
    */
   passwordField: string;
+
+  /**
+   * When `true`, encrypted pages are marked `file.data.unlisted = true`,
+   * hiding them from every build-time listing surface that respects the
+   * `unlisted` convention (contentIndex, RSS, sitemap, backlinks,
+   * recent-notes, folder-page, tag-page, graph, explorer, search).
+   *
+   * The page HTML is still emitted, so the page remains accessible by
+   * its direct URL. After successful client-side decryption, the page is
+   * dynamically added back to client-side discovery surfaces (graph,
+   * explorer, search) via the shadow content index emitted by
+   * {@link EncryptedContentIndex}.
+   *
+   * Per-page frontmatter `unlisted: true | false` overrides this option.
+   *
+   * NOTE: When `true`, the `EncryptedContentIndex` emitter MUST also be
+   * registered in your Quartz configuration. Without it, unlisted encrypted
+   * pages cannot be dynamically revealed after decryption and will remain
+   * invisible to graph/explorer/search for the entire session. The
+   * transformer emits a console warning at build time if it detects the
+   * emitter is missing.
+   *
+   * @default false
+   */
+  unlistWhenEncrypted: boolean;
 }
 
-export interface EncryptedPageFilterOptions {
+export interface EncryptedContentIndexOptions {
   /**
-   * How encrypted pages appear in content indices (search, RSS, sitemap).
+   * Output path for the shadow content index, relative to the Quartz output
+   * directory. The file is a JSON document wrapping a flat array of opaque
+   * encrypted blobs; see the README for the format.
    *
-   * - `"visible"` — Page appears in index with title but no content.
-   * - `"icon"` — Same as visible (included in index, no content leak).
-   * - `"hidden"` — Page is excluded from content index, RSS, and sitemap.
-   *
-   * @default "icon"
+   * @default "static/encryptedContentIndex.json"
    */
-  visibility: EncryptedPageVisibility;
+  outputPath: string;
 }

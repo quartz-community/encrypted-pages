@@ -1,17 +1,12 @@
 // @ts-nocheck
-// ============================================================================
-// Encrypted Pages — Client-Side Decryption Script
-// ============================================================================
-// Runs in the browser. Decrypts AES-256-GCM encrypted content using the
-// Web Crypto API with PBKDF2 key derivation. Caches successful passwords
-// in sessionStorage for convenience across encrypted pages.
-// ============================================================================
-
 const SALT_LENGTH = 16;
 const IV_LENGTH = 12;
 const AUTH_TAG_LENGTH = 16;
 
-/** Decode a base64 string into a Uint8Array. */
+const PASSWORDS_KEY = "encrypted-pages-passwords";
+const DECRYPTED_ENTRIES_KEY = "encrypted-pages:decryptedShadowEntries";
+const SHADOW_INDEX_VERSION = 1;
+
 function base64ToBuffer(base64) {
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
@@ -21,7 +16,6 @@ function base64ToBuffer(base64) {
   return bytes;
 }
 
-/** Derive an AES-256-GCM key from a password and salt using PBKDF2. */
 async function deriveKey(password, salt, iterations) {
   const enc = new TextEncoder();
   const passwordKey = await window.crypto.subtle.importKey(
@@ -46,13 +40,6 @@ async function deriveKey(password, salt, iterations) {
   );
 }
 
-/**
- * Decrypt an AES-256-GCM encrypted payload.
- *
- * Input format: base64(salt[16] + iv[12] + authTag[16] + ciphertext)
- * Node.js crypto produces authTag separately, but Web Crypto expects
- * tag appended to ciphertext. We reassemble accordingly.
- */
 async function decryptContent(encryptedBase64, password, iterations) {
   const data = base64ToBuffer(encryptedBase64);
 
@@ -61,7 +48,6 @@ async function decryptContent(encryptedBase64, password, iterations) {
   const authTag = data.slice(SALT_LENGTH + IV_LENGTH, SALT_LENGTH + IV_LENGTH + AUTH_TAG_LENGTH);
   const ciphertext = data.slice(SALT_LENGTH + IV_LENGTH + AUTH_TAG_LENGTH);
 
-  // Web Crypto expects ciphertext + authTag concatenated
   const ciphertextWithTag = new Uint8Array(ciphertext.length + authTag.length);
   ciphertextWithTag.set(ciphertext, 0);
   ciphertextWithTag.set(authTag, ciphertext.length);
@@ -77,10 +63,9 @@ async function decryptContent(encryptedBase64, password, iterations) {
   return new TextDecoder().decode(decrypted);
 }
 
-/** Get cached passwords from sessionStorage. */
 function getCachedPasswords() {
   try {
-    const raw = sessionStorage.getItem("encrypted-pages-passwords");
+    const raw = sessionStorage.getItem(PASSWORDS_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
@@ -89,16 +74,33 @@ function getCachedPasswords() {
   }
 }
 
-/** Add a password to the sessionStorage cache. */
 function cachePassword(password) {
   const passwords = getCachedPasswords();
   if (!passwords.includes(password)) {
     passwords.push(password);
-    sessionStorage.setItem("encrypted-pages-passwords", JSON.stringify(passwords));
+    sessionStorage.setItem(PASSWORDS_KEY, JSON.stringify(passwords));
   }
 }
 
-/** Show an error message on the password form. */
+function getDecryptedShadowEntries() {
+  try {
+    const raw = sessionStorage.getItem(DECRYPTED_ENTRIES_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function storeDecryptedShadowEntries(entries) {
+  try {
+    sessionStorage.setItem(DECRYPTED_ENTRIES_KEY, JSON.stringify(entries));
+  } catch {
+    // sessionStorage quota - fail silently
+  }
+}
+
 function showError(container, message) {
   const errorEl = container.querySelector(".encrypted-page-error");
   if (errorEl) {
@@ -107,7 +109,6 @@ function showError(container, message) {
   }
 }
 
-/** Hide the error message. */
 function hideError(container) {
   const errorEl = container.querySelector(".encrypted-page-error");
   if (errorEl) {
@@ -116,7 +117,6 @@ function hideError(container) {
   }
 }
 
-/** Set the form into a loading/disabled state. */
 function setLoading(container, loading) {
   const button = container.querySelector(".encrypted-page-submit");
   const input = container.querySelector(".encrypted-page-input");
@@ -129,11 +129,117 @@ function setLoading(container, loading) {
   }
 }
 
-/**
- * Attempt to decrypt and reveal the page content.
- * On success, replaces the encrypted container with decrypted HTML and
- * dispatches a `render` event so other components re-initialize.
- */
+function resolveShadowIndexPath() {
+  const scripts = document.querySelectorAll("script");
+  for (const script of scripts) {
+    const text = script.textContent ?? "";
+    const match = text.match(/fetch\(["']([^"']+contentIndex\.json)["']\)/);
+    if (match) {
+      return match[1].replace(/contentIndex\.json$/, "encryptedContentIndex.json");
+    }
+  }
+  return new URL("static/encryptedContentIndex.json", document.baseURI).toString();
+}
+
+let shadowIndexPromise = null;
+async function fetchShadowIndex() {
+  if (shadowIndexPromise) return shadowIndexPromise;
+  const url = resolveShadowIndexPath();
+  shadowIndexPromise = fetch(url)
+    .then((r) => {
+      if (!r.ok) throw new Error(`shadow index HTTP ${r.status}`);
+      return r.json();
+    })
+    .then((data) => {
+      if (!data || data.version !== SHADOW_INDEX_VERSION || !Array.isArray(data.entries)) {
+        return { version: SHADOW_INDEX_VERSION, entries: [] };
+      }
+      return data;
+    })
+    .catch(() => ({ version: SHADOW_INDEX_VERSION, entries: [] }));
+  return shadowIndexPromise;
+}
+
+async function decryptShadowEntries(shadowFile, passwords, alreadyDecrypted) {
+  const patch = {};
+  const newDecrypted = { ...alreadyDecrypted };
+  let changed = false;
+
+  for (let i = 0; i < shadowFile.entries.length; i++) {
+    const key = String(i);
+    if (alreadyDecrypted[key]) {
+      const cached = alreadyDecrypted[key];
+      if (cached && cached.slug) {
+        patch[cached.slug] = cached.entry;
+      }
+      continue;
+    }
+
+    const blob = shadowFile.entries[i];
+    if (!blob || typeof blob.ciphertext !== "string") continue;
+
+    for (const pw of passwords) {
+      try {
+        const plaintext = await decryptContent(blob.ciphertext, pw, blob.iterations);
+        const decoded = JSON.parse(plaintext);
+        if (decoded && typeof decoded.slug === "string" && decoded.entry) {
+          patch[decoded.slug] = decoded.entry;
+          newDecrypted[key] = decoded;
+          changed = true;
+        }
+        break;
+      } catch {
+        // try next password
+      }
+    }
+  }
+
+  if (changed) {
+    storeDecryptedShadowEntries(newDecrypted);
+  }
+
+  return patch;
+}
+
+async function applyShadowPatches(patch) {
+  const slugs = Object.keys(patch);
+  if (slugs.length === 0) return;
+
+  try {
+    const base = await (typeof fetchData !== "undefined" ? fetchData : Promise.resolve(null));
+    if (!base || typeof base !== "object") return;
+    const root = base.content && typeof base.content === "object" ? base.content : base;
+    for (const slug of slugs) {
+      if (!(slug in root)) {
+        root[slug] = patch[slug];
+      }
+    }
+  } catch {
+    return;
+  }
+
+  document.dispatchEvent(new CustomEvent("content-index-updated", { detail: { slugs } }));
+  document.dispatchEvent(new CustomEvent("render"));
+}
+
+let shadowUnlockInFlight = false;
+async function tryUnlockShadowIndex() {
+  if (shadowUnlockInFlight) return;
+  const passwords = getCachedPasswords();
+  if (passwords.length === 0) return;
+
+  shadowUnlockInFlight = true;
+  try {
+    const shadowFile = await fetchShadowIndex();
+    if (!shadowFile.entries || shadowFile.entries.length === 0) return;
+    const alreadyDecrypted = getDecryptedShadowEntries();
+    const patch = await decryptShadowEntries(shadowFile, passwords, alreadyDecrypted);
+    await applyShadowPatches(patch);
+  } finally {
+    shadowUnlockInFlight = false;
+  }
+}
+
 async function attemptDecrypt(container, password) {
   const encryptedData = container.getAttribute("data-encrypted");
   const iterations = parseInt(container.getAttribute("data-iterations") || "600000", 10);
@@ -143,24 +249,16 @@ async function attemptDecrypt(container, password) {
   try {
     const html = await decryptContent(encryptedData, password, iterations);
 
-    // Replace the encrypted container with decrypted content.
-    // The decrypted HTML is the full page body, so we replace the container's
-    // parent (article) children or the container itself.
     const parent = container.parentElement;
     if (parent) {
-      // Create a temporary wrapper to parse the HTML
       const temp = document.createElement("div");
       temp.innerHTML = html;
-
-      // Replace the encrypted container with decrypted content
       container.replaceWith(...temp.childNodes);
     }
 
-    // Cache the successful password
     cachePassword(password);
-
-    // Dispatch render event so other plugins (graph, TOC, etc.) re-initialize
     document.dispatchEvent(new CustomEvent("render"));
+    tryUnlockShadowIndex();
 
     return true;
   } catch {
@@ -168,19 +266,19 @@ async function attemptDecrypt(container, password) {
   }
 }
 
-/** Initialize decryption UI for all encrypted containers on the page. */
 function init() {
   const containers = document.querySelectorAll(".encrypted-page");
-  if (containers.length === 0) return;
+  if (containers.length === 0) {
+    tryUnlockShadowIndex();
+    return;
+  }
 
   for (const container of containers) {
-    // Skip if already has a form (re-initialization after nav)
     if (container.querySelector(".encrypted-page-form")) continue;
 
     const encryptedData = container.getAttribute("data-encrypted");
     if (!encryptedData) continue;
 
-    // Build the password prompt UI
     const form = document.createElement("div");
     form.className = "encrypted-page-form";
     form.innerHTML = [
@@ -235,7 +333,6 @@ function init() {
       });
     }
 
-    // Try cached passwords automatically
     const cached = getCachedPasswords();
     if (cached.length > 0) {
       (async () => {
@@ -246,30 +343,25 @@ function init() {
       })();
     }
   }
+
+  tryUnlockShadowIndex();
 }
 
-// Listen to Quartz navigation events
 document.addEventListener("nav", () => {
   init();
 });
 
-// Re-initialize on render (e.g. if another plugin triggers re-render)
 document.addEventListener("render", () => {
-  // Only re-init if there are still encrypted containers
   const containers = document.querySelectorAll(".encrypted-page");
   if (containers.length > 0) {
     init();
   }
 });
 
-// Watch for encrypted containers injected into the DOM (e.g. by popovers).
-// Popovers fetch page HTML and append elements without firing nav/render events,
-// so a MutationObserver ensures the password prompt is initialized.
 const observer = new MutationObserver((mutations) => {
   for (const mutation of mutations) {
     for (const node of mutation.addedNodes) {
       if (!(node instanceof HTMLElement)) continue;
-      // Check if the added node is or contains an uninitialized encrypted container
       const containers = node.classList?.contains("encrypted-page")
         ? [node]
         : [...node.querySelectorAll(".encrypted-page")];

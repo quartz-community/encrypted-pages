@@ -100,24 +100,19 @@
     "defaultOrder": 900,
     "defaultEnabled": true,
     "defaultOptions": {
-      "visibility": "icon",
       "iterations": 600000,
-      "passwordField": "password"
+      "passwordField": "password",
+      "unlistWhenEncrypted": false
     },
     "optionSchema": {
-      "visibility": {
-        "type": "enum",
-        "values": [
-          "visible",
-          "icon",
-          "hidden"
-        ]
-      },
       "iterations": {
         "type": "number"
       },
       "passwordField": {
         "type": "string"
+      },
+      "unlistWhenEncrypted": {
+        "type": "boolean"
       }
     },
     "components": {
