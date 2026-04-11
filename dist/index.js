@@ -2274,6 +2274,10 @@ var rehypeEncryptedPages = (options) => {
     } else if (options.unlistWhenEncrypted) {
       data.unlisted = true;
     }
+    if (frontmatter.stealth === true) {
+      data.stealth = true;
+      data.unlisted = true;
+    }
   };
 };
 var EncryptedPages = (userOptions) => {
@@ -2320,6 +2324,7 @@ var EncryptedContentIndex = (userOptions) => {
       const data = file.data ?? {};
       if (data.encrypted !== true) continue;
       if (data.unlisted !== true) continue;
+      if (data.stealth === true) continue;
       const frontmatter = data.frontmatter ?? {};
       const password = frontmatter[passwordField];
       if (typeof password !== "string" || password.length === 0) continue;

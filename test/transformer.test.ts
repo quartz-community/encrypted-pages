@@ -209,4 +209,72 @@ describe("EncryptedPages transformer", () => {
     expect((vfile.data as Record<string, unknown>).encrypted).toBe(true);
     expect((vfile.data as Record<string, unknown>).unlisted).toBe(false);
   });
+
+  it("marks encrypted pages as stealth when frontmatter.stealth is true", async () => {
+    const tree = createHastTree("Stealth content");
+    const vfile = new VFile("");
+    vfile.data = { frontmatter: { title: "Test", password: "pw", stealth: true } };
+
+    await runTransformer(tree, vfile);
+
+    expect((vfile.data as Record<string, unknown>).encrypted).toBe(true);
+    expect((vfile.data as Record<string, unknown>).stealth).toBe(true);
+  });
+
+  it("stealth implies unlisted, even when frontmatter.unlisted is absent", async () => {
+    const tree = createHastTree("Stealth content");
+    const vfile = new VFile("");
+    vfile.data = { frontmatter: { title: "Test", password: "pw", stealth: true } };
+
+    await runTransformer(tree, vfile);
+
+    expect((vfile.data as Record<string, unknown>).unlisted).toBe(true);
+  });
+
+  it("stealth overrides explicit frontmatter.unlisted: false", async () => {
+    const tree = createHastTree("Stealth content");
+    const vfile = new VFile("");
+    vfile.data = {
+      frontmatter: { title: "Test", password: "pw", stealth: true, unlisted: false },
+    };
+
+    await runTransformer(tree, vfile);
+
+    expect((vfile.data as Record<string, unknown>).stealth).toBe(true);
+    expect((vfile.data as Record<string, unknown>).unlisted).toBe(true);
+  });
+
+  it("does not mark non-encrypted pages as stealth even when frontmatter.stealth is true", async () => {
+    const tree = createHastTree("Public content");
+    const vfile = new VFile("");
+    vfile.data = { frontmatter: { title: "Public Page", stealth: true } };
+
+    await runTransformer(tree, vfile);
+
+    expect((vfile.data as Record<string, unknown>).encrypted).toBeUndefined();
+    expect((vfile.data as Record<string, unknown>).stealth).toBeUndefined();
+    expect((vfile.data as Record<string, unknown>).unlisted).toBeUndefined();
+  });
+
+  it("ignores non-boolean stealth values (string)", async () => {
+    const tree = createHastTree("Secret");
+    const vfile = new VFile("");
+    vfile.data = { frontmatter: { title: "Test", password: "pw", stealth: "true" } };
+
+    await runTransformer(tree, vfile);
+
+    expect((vfile.data as Record<string, unknown>).encrypted).toBe(true);
+    expect((vfile.data as Record<string, unknown>).stealth).toBeUndefined();
+  });
+
+  it("does not mark encrypted pages as stealth when stealth is false", async () => {
+    const tree = createHastTree("Secret");
+    const vfile = new VFile("");
+    vfile.data = { frontmatter: { title: "Test", password: "pw", stealth: false, unlisted: true } };
+
+    await runTransformer(tree, vfile);
+
+    expect((vfile.data as Record<string, unknown>).stealth).toBeUndefined();
+    expect((vfile.data as Record<string, unknown>).unlisted).toBe(true);
+  });
 });

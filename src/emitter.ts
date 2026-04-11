@@ -84,6 +84,7 @@ export const EncryptedContentIndex: QuartzEmitterPlugin<Partial<EncryptedContent
       const data = (file.data ?? {}) as Record<string, unknown>;
       if (data.encrypted !== true) continue;
       if (data.unlisted !== true) continue;
+      if (data.stealth === true) continue;
 
       const frontmatter = (data.frontmatter as Record<string, unknown> | undefined) ?? {};
       const password = frontmatter[passwordField];

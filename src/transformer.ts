@@ -88,6 +88,11 @@ const rehypeEncryptedPages = (options: EncryptedPagesOptions): Plugin<[], HastRo
     } else if (options.unlistWhenEncrypted) {
       data.unlisted = true;
     }
+
+    if (frontmatter.stealth === true) {
+      data.stealth = true;
+      data.unlisted = true;
+    }
   };
 };
 

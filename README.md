@@ -69,10 +69,11 @@ All options below are set at the single plugin-entry level and are shared betwee
 
 ### Frontmatter fields
 
-| Field      | Type      | Description                                                                                                                             |
-| ---------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `password` | `string`  | Enables encryption for this page. The field name is configurable via `passwordField`.                                                   |
-| `unlisted` | `boolean` | Overrides `unlistWhenEncrypted`. `true` forces the page unlisted; `false` forces it listed even when `unlistWhenEncrypted` is also set. |
+| Field      | Type      | Description                                                                                                                                                                                                                                                                                               |
+| ---------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `password` | `string`  | Enables encryption for this page. The field name is configurable via `passwordField`.                                                                                                                                                                                                                     |
+| `unlisted` | `boolean` | Overrides `unlistWhenEncrypted`. `true` forces the page unlisted; `false` forces it listed even when `unlistWhenEncrypted` is also set.                                                                                                                                                                   |
+| `stealth`  | `boolean` | When `true` and the page is encrypted, suppresses the page's entry in the shadow content index. The page stays hidden from every listing surface **even after successful client-side decryption**. Implies `unlisted: true` (overrides any explicit `unlisted: false`). No effect on non-encrypted pages. |
 
 ## How `unlisted` works
 
@@ -83,6 +84,27 @@ When an encrypted page is marked `unlisted: true`:
 - Its metadata (slug, title, links, tags) is encrypted with the page's own password and emitted to `static/encryptedContentIndex.json` in an opaque, flat JSON array. No slugs or titles leak to anonymous visitors.
 - On any page load, if the user has cached passwords in sessionStorage from a previous successful decryption, the client script fetches the shadow index, decrypts entries matching those passwords, and patches the in-memory content index in place. A `content-index-updated` event is dispatched so graph, explorer, and search reinitialize with the unlocked entries.
 - Server-side rendered listings (backlinks, recent-notes, folder-page, tag-page) remain statically hidden even after client-side decryption. This is a deliberate trade-off: those surfaces are HTML baked at build time and cannot be patched client-side.
+
+## How `stealth` works
+
+When an encrypted page is marked `stealth: true`, it behaves like an unlisted page with one critical difference: its entry is **never** emitted to the shadow content index. As a result:
+
+- The page HTML is still emitted at its normal URL and accessible to anyone who knows it.
+- The page is absent from `contentIndex.json`, RSS, sitemap, graph, explorer, search, backlinks, recent notes, folder listings, and tag listings — same as any `unlisted` page.
+- Unlike `unlisted`, **successful client-side decryption does not reveal the page in graph, explorer, or search**. There is no shadow-index entry to decrypt, so the in-memory content index is never patched for this page.
+- The password cache still works: a user who unlocks a stealth page once will not have to re-enter the password on subsequent visits within the same session. Only discovery surfaces are affected.
+
+Use `stealth: true` when you want a "secret door" page: accessible only to users who already know the exact URL, invisible to everyone else permanently, even to users who have successfully decrypted other encrypted pages on the same site.
+
+```yaml
+---
+title: Deep Secret
+password: hunter2
+stealth: true
+---
+```
+
+Setting `stealth: true` is equivalent to `unlisted: true` on a page that does not also have a `password` field — the flag has no effect on non-encrypted pages, because stealth only controls the shadow-index emission, and non-encrypted pages do not have shadow-index entries in the first place.
 
 ## Security
 

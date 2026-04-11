@@ -15,6 +15,7 @@ function makeEncryptedContent(
   password: string,
   opts: {
     unlisted?: boolean;
+    stealth?: boolean;
     title?: string;
     tags?: string[];
     links?: string[];
@@ -38,7 +39,7 @@ function makeEncryptedContent(
   };
 
   const vfile = new VFile("");
-  vfile.data = {
+  const data: Record<string, unknown> = {
     slug,
     relativePath: `${slug}.md`,
     encrypted: true,
@@ -51,7 +52,9 @@ function makeEncryptedContent(
       password,
       tags: opts.tags ?? [],
     },
-  } as Record<string, unknown>;
+  };
+  if (opts.stealth) data.stealth = true;
+  vfile.data = data;
 
   return [tree, vfile];
 }
@@ -187,5 +190,30 @@ describe("EncryptedContentIndex emitter", () => {
 
     expect(shadow.version).toBe(SHADOW_INDEX_VERSION);
     expect(shadow.entries).toEqual([]);
+  });
+
+  it("skips stealth pages from the shadow index", async () => {
+    const content = [makeEncryptedContent("secret/stealth", "pw1", { stealth: true })];
+    const shadow = await runEmitter(content);
+
+    expect(shadow.entries).toHaveLength(0);
+  });
+
+  it("includes non-stealth pages alongside stealth pages (only stealth is skipped)", async () => {
+    const content = [
+      makeEncryptedContent("secret/revealable", "pw1"),
+      makeEncryptedContent("secret/stealth", "pw1", { stealth: true }),
+      makeEncryptedContent("secret/also-revealable", "pw1"),
+    ];
+    const shadow = await runEmitter(content);
+
+    expect(shadow.entries).toHaveLength(2);
+
+    const decoded = shadow.entries.map(
+      (e) => JSON.parse(decrypt(e.ciphertext, "pw1", e.iterations)) as ShadowContentIndexEntry,
+    );
+    const slugs = new Set(decoded.map((d) => d.slug));
+    expect(slugs).toEqual(new Set(["secret/revealable", "secret/also-revealable"]));
+    expect(slugs.has("secret/stealth")).toBe(false);
   });
 });
