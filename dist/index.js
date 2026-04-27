@@ -1,8 +1,6 @@
 import crypto from 'crypto';
 import path from 'path';
 import fs from 'fs/promises';
-import { joinSegments } from '@quartz-community/types';
-import { jsx } from 'preact/jsx-runtime';
 
 var __defProp = Object.defineProperty;
 var __export = (target, all2) => {
@@ -237,7 +235,7 @@ var aria = create({
     ariaValueText: null,
     role: null
   },
-  transform(_, property) {
+  transform(_2, property) {
     return property === "role" ? property : "aria-" + property.slice(4).toLowerCase();
   }
 });
@@ -1190,7 +1188,7 @@ var xlink = create({
     xLinkType: null
   },
   space: "xlink",
-  transform(_, property) {
+  transform(_2, property) {
     return "xlink:" + property.slice(5).toLowerCase();
   }
 });
@@ -1207,7 +1205,7 @@ var xmlns = create({
 var xml = create({
   properties: { xmlBase: null, xmlLang: null, xmlSpace: null },
   space: "xml",
-  transform(_, property) {
+  transform(_2, property) {
     return "xml:" + property.slice(3).toLowerCase();
   }
 });
@@ -1879,67 +1877,67 @@ var closing = omission({
   thead,
   tr
 });
-function headOrColgroupOrCaption(_, index, parent) {
+function headOrColgroupOrCaption(_2, index, parent) {
   const next = siblingAfter(parent, index, true);
   return !next || next.type !== "comment" && !(next.type === "text" && whitespace(next.value.charAt(0)));
 }
-function html3(_, index, parent) {
+function html3(_2, index, parent) {
   const next = siblingAfter(parent, index);
   return !next || next.type !== "comment";
 }
-function body(_, index, parent) {
+function body(_2, index, parent) {
   const next = siblingAfter(parent, index);
   return !next || next.type !== "comment";
 }
-function p(_, index, parent) {
+function p(_2, index, parent) {
   const next = siblingAfter(parent, index);
   return next ? next.type === "element" && (next.tagName === "address" || next.tagName === "article" || next.tagName === "aside" || next.tagName === "blockquote" || next.tagName === "details" || next.tagName === "div" || next.tagName === "dl" || next.tagName === "fieldset" || next.tagName === "figcaption" || next.tagName === "figure" || next.tagName === "footer" || next.tagName === "form" || next.tagName === "h1" || next.tagName === "h2" || next.tagName === "h3" || next.tagName === "h4" || next.tagName === "h5" || next.tagName === "h6" || next.tagName === "header" || next.tagName === "hgroup" || next.tagName === "hr" || next.tagName === "main" || next.tagName === "menu" || next.tagName === "nav" || next.tagName === "ol" || next.tagName === "p" || next.tagName === "pre" || next.tagName === "section" || next.tagName === "table" || next.tagName === "ul") : !parent || // Confusing parent.
   !(parent.type === "element" && (parent.tagName === "a" || parent.tagName === "audio" || parent.tagName === "del" || parent.tagName === "ins" || parent.tagName === "map" || parent.tagName === "noscript" || parent.tagName === "video"));
 }
-function li(_, index, parent) {
+function li(_2, index, parent) {
   const next = siblingAfter(parent, index);
   return !next || next.type === "element" && next.tagName === "li";
 }
-function dt(_, index, parent) {
+function dt(_2, index, parent) {
   const next = siblingAfter(parent, index);
   return Boolean(
     next && next.type === "element" && (next.tagName === "dt" || next.tagName === "dd")
   );
 }
-function dd(_, index, parent) {
+function dd(_2, index, parent) {
   const next = siblingAfter(parent, index);
   return !next || next.type === "element" && (next.tagName === "dt" || next.tagName === "dd");
 }
-function rubyElement(_, index, parent) {
+function rubyElement(_2, index, parent) {
   const next = siblingAfter(parent, index);
   return !next || next.type === "element" && (next.tagName === "rp" || next.tagName === "rt");
 }
-function optgroup(_, index, parent) {
+function optgroup(_2, index, parent) {
   const next = siblingAfter(parent, index);
   return !next || next.type === "element" && next.tagName === "optgroup";
 }
-function option(_, index, parent) {
+function option(_2, index, parent) {
   const next = siblingAfter(parent, index);
   return !next || next.type === "element" && (next.tagName === "option" || next.tagName === "optgroup");
 }
-function thead(_, index, parent) {
+function thead(_2, index, parent) {
   const next = siblingAfter(parent, index);
   return Boolean(
     next && next.type === "element" && (next.tagName === "tbody" || next.tagName === "tfoot")
   );
 }
-function tbody(_, index, parent) {
+function tbody(_2, index, parent) {
   const next = siblingAfter(parent, index);
   return !next || next.type === "element" && (next.tagName === "tbody" || next.tagName === "tfoot");
 }
-function tfoot(_, index, parent) {
+function tfoot(_2, index, parent) {
   return !siblingAfter(parent, index);
 }
-function tr(_, index, parent) {
+function tr(_2, index, parent) {
   const next = siblingAfter(parent, index);
   return !next || next.type === "element" && next.tagName === "tr";
 }
-function cells(_, index, parent) {
+function cells(_2, index, parent) {
   const next = siblingAfter(parent, index);
   return !next || next.type === "element" && (next.tagName === "td" || next.tagName === "th");
 }
@@ -2066,8 +2064,8 @@ function serializeAttributes(state, properties) {
 }
 function serializeAttribute(state, key2, value) {
   const info = find(state.schema, key2);
-  const x = state.settings.allowParseErrors && state.schema.space === "html" ? 0 : 1;
-  const y = state.settings.allowDangerousCharacters ? 0 : 1;
+  const x2 = state.settings.allowParseErrors && state.schema.space === "html" ? 0 : 1;
+  const y2 = state.settings.allowDangerousCharacters ? 0 : 1;
   let quote = state.quote;
   let result;
   if (info.overloadedBoolean && (value === info.attribute || value === "")) {
@@ -2082,7 +2080,7 @@ function serializeAttribute(state, key2, value) {
     info.attribute,
     Object.assign({}, state.settings.characterReferences, {
       // Always encode without parse errors in non-HTML.
-      subset: constants.name[x][y]
+      subset: constants.name[x2][y2]
     })
   );
   if (value === true) return name;
@@ -2095,7 +2093,7 @@ function serializeAttribute(state, key2, value) {
       value,
       Object.assign({}, state.settings.characterReferences, {
         attribute: true,
-        subset: constants.unquoted[x][y]
+        subset: constants.unquoted[x2][y2]
       })
     );
   }
@@ -2107,7 +2105,7 @@ function serializeAttribute(state, key2, value) {
       value,
       Object.assign({}, state.settings.characterReferences, {
         // Always encode without parse errors in non-HTML.
-        subset: (quote === "'" ? constants.single : constants.double)[x][y],
+        subset: (quote === "'" ? constants.single : constants.double)[x2][y2],
         attribute: true
       })
     ) + quote;
@@ -2117,7 +2115,7 @@ function serializeAttribute(state, key2, value) {
 
 // node_modules/hast-util-to-html/lib/handle/text.js
 var textEntitySubset = ["<", "&"];
-function text(node, _, parent, state) {
+function text(node, _2, parent, state) {
   return parent && parent.type === "element" && (parent.tagName === "script" || parent.tagName === "style") ? node.value : stringifyEntities(
     node.value,
     Object.assign({}, state.settings.characterReferences, {
@@ -2289,6 +2287,13 @@ var EncryptedPages = (userOptions) => {
     }
   };
 };
+
+// node_modules/@quartz-community/types/dist/index.js
+function joinSegments(...segments) {
+  return segments.filter((segment) => segment.length > 0).join("/").replace(/\/+/g, "/");
+}
+
+// src/emitter.ts
 var SHADOW_INDEX_VERSION = 1;
 var defaultOptions2 = {
   outputPath: "static/encryptedContentIndex.json",
@@ -2299,8 +2304,8 @@ function buildShadowEntry(data) {
   if (typeof slug !== "string" || slug.length === 0) return null;
   const frontmatter = data.frontmatter ?? {};
   const title = typeof frontmatter.title === "string" ? frontmatter.title : "";
-  const tags = Array.isArray(frontmatter.tags) ? frontmatter.tags.filter((t) => typeof t === "string") : [];
-  const links = Array.isArray(data.links) ? data.links.filter((l) => typeof l === "string") : [];
+  const tags = Array.isArray(frontmatter.tags) ? frontmatter.tags.filter((t2) => typeof t2 === "string") : [];
+  const links = Array.isArray(data.links) ? data.links.filter((l2) => typeof l2 === "string") : [];
   const filePath = typeof data.relativePath === "string" ? data.relativePath : "";
   return {
     slug,
@@ -2372,10 +2377,31 @@ var encrypted_default = ".encrypted-page {\n  display: flex;\n  align-items: cen
 // src/components/scripts/encrypted.inline.ts
 var encrypted_inline_default = `var S="encrypted-pages-passwords",m="encrypted-pages:decryptedShadowEntries";function v(t){let e=atob(t),n=new Uint8Array(e.length);for(let r=0;r<e.length;r++)n[r]=e.charCodeAt(r);return n}async function b(t,e,n){let r=new TextEncoder,o=await window.crypto.subtle.importKey("raw",r.encode(t),"PBKDF2",!1,["deriveKey"]);return window.crypto.subtle.deriveKey({name:"PBKDF2",salt:e,iterations:n,hash:"SHA-256"},o,{name:"AES-GCM",length:256},!1,["decrypt"])}async function T(t,e,n){let r=v(t),o=r.slice(0,16),i=r.slice(16,28),c=r.slice(28,44),a=r.slice(44),s=new Uint8Array(a.length+c.length);s.set(a,0),s.set(c,a.length);let d=await b(e,o,n),l=await window.crypto.subtle.decrypt({name:"AES-GCM",iv:i},d,s);return new TextDecoder().decode(l)}function h(){try{let t=sessionStorage.getItem(S);if(!t)return[];let e=JSON.parse(t);return Array.isArray(e)?e:[]}catch{return[]}}function A(t){let e=h();e.includes(t)||(e.push(t),sessionStorage.setItem(S,JSON.stringify(e)))}function L(){try{let t=sessionStorage.getItem(m);if(!t)return{};let e=JSON.parse(t);return e&&typeof e=="object"?e:{}}catch{return{}}}function N(t){try{sessionStorage.setItem(m,JSON.stringify(t))}catch{}}function I(t,e){let n=t.querySelector(".encrypted-page-error");n&&(n.textContent=e,n.style.display="block")}function _(t){let e=t.querySelector(".encrypted-page-error");e&&(e.style.display="none",e.textContent="")}function w(t,e){let n=t.querySelector(".encrypted-page-submit"),r=t.querySelector(".encrypted-page-input");n&&(n.disabled=e,n.textContent=e?"Decrypting\\u2026":"Unlock"),r&&(r.disabled=e)}function x(){let t=document.querySelectorAll("script");for(let e of t){let r=(e.textContent??"").match(/fetch\\(["']([^"']+contentIndex\\.json)["']\\)/);if(r)return r[1].replace(/contentIndex\\.json$/,"encryptedContentIndex.json")}return new URL("static/encryptedContentIndex.json",document.baseURI).toString()}var p=null;async function H(){if(p)return p;let t=x();return p=fetch(t).then(e=>{if(!e.ok)throw new Error(\`shadow index HTTP \${e.status}\`);return e.json()}).then(e=>!e||e.version!==1||!Array.isArray(e.entries)?{version:1,entries:[]}:e).catch(()=>({version:1,entries:[]})),p}async function D(t,e,n){let r={},o={...n},i=!1;for(let c=0;c<t.entries.length;c++){let a=String(c);if(n[a]){let d=n[a];d&&d.slug&&(r[d.slug]=d.entry);continue}let s=t.entries[c];if(!(!s||typeof s.ciphertext!="string"))for(let d of e)try{let l=await T(s.ciphertext,d,s.iterations),u=JSON.parse(l);u&&typeof u.slug=="string"&&u.entry&&(r[u.slug]=u.entry,o[a]=u,i=!0);break}catch{}}return i&&N(o),r}async function G(t){let e=Object.keys(t);if(e.length!==0){try{let n=await(typeof fetchData<"u"?fetchData:Promise.resolve(null));if(!n||typeof n!="object")return;let r=n.content&&typeof n.content=="object"?n.content:n;for(let o of e)o in r||(r[o]=t[o])}catch{return}document.dispatchEvent(new CustomEvent("content-index-updated",{detail:{slugs:e}})),document.dispatchEvent(new CustomEvent("render"))}}var y=!1;async function f(){if(y)return;let t=h();if(t.length!==0){y=!0;try{let e=await H();if(!e.entries||e.entries.length===0)return;let n=L(),r=await D(e,t,n);await G(r)}finally{y=!1}}}async function E(t,e){let n=t.getAttribute("data-encrypted"),r=parseInt(t.getAttribute("data-iterations")||"600000",10);if(!n)return!1;try{let o=await T(n,e,r);if(t.parentElement){let c=document.createElement("div");c.innerHTML=o,t.replaceWith(...c.childNodes)}return A(e),document.dispatchEvent(new CustomEvent("render")),f(),!0}catch{return!1}}function g(){let t=document.querySelectorAll(".encrypted-page");if(t.length===0){f();return}for(let e of t){if(e.querySelector(".encrypted-page-form")||!e.getAttribute("data-encrypted"))continue;let r=document.createElement("div");r.className="encrypted-page-form",r.innerHTML=['<div class="encrypted-page-icon" aria-hidden="true">','<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">','<rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>','<path d="M7 11V7a5 5 0 0 1 10 0v4"></path>',"</svg>","</div>",'<p class="encrypted-page-label">This page is encrypted. Enter the password to view its content.</p>','<div class="encrypted-page-input-row">','<input type="password" class="encrypted-page-input" placeholder="Password" autocomplete="off" />','<button type="button" class="encrypted-page-submit">Unlock</button>',"</div>",'<p class="encrypted-page-error" style="display:none"></p>'].join(""),e.appendChild(r);let o=r.querySelector(".encrypted-page-input"),i=r.querySelector(".encrypted-page-submit");async function c(){let s=o?.value;if(!s)return;_(e),w(e,!0),await E(e,s)||(w(e,!1),I(e,"Incorrect password. Please try again."),o&&(o.value="",o.focus()))}i&&i.addEventListener("click",c),o&&o.addEventListener("keydown",s=>{s.key==="Enter"&&(s.preventDefault(),c())});let a=h();a.length>0&&(async()=>{for(let s of a)if(await E(e,s))return})()}f()}document.addEventListener("nav",()=>{g()});document.addEventListener("render",()=>{document.querySelectorAll(".encrypted-page").length>0&&g()});var C=new MutationObserver(t=>{for(let e of t)for(let n of e.addedNodes){if(!(n instanceof HTMLElement))continue;if((n.classList?.contains("encrypted-page")?[n]:[...n.querySelectorAll(".encrypted-page")]).filter(i=>!i.querySelector(".encrypted-page-form")).length>0){g();return}}});C.observe(document.body,{childList:!0,subtree:!0});
 `;
+var l;
+l = { __e: function(n2, l2, u3, t2) {
+  for (var i2, r2, o2; l2 = l2.__; ) if ((i2 = l2.__c) && !i2.__) try {
+    if ((r2 = i2.constructor) && null != r2.getDerivedStateFromError && (i2.setState(r2.getDerivedStateFromError(n2)), o2 = i2.__d), null != i2.componentDidCatch && (i2.componentDidCatch(n2, t2 || {}), o2 = i2.__d), o2) return i2.__E = i2;
+  } catch (l3) {
+    n2 = l3;
+  }
+  throw n2;
+} }, "function" == typeof Promise ? Promise.prototype.then.bind(Promise.resolve()) : setTimeout, Math.random().toString(8);
+
+// node_modules/preact/jsx-runtime/dist/jsxRuntime.mjs
+var f2 = 0;
+function u2(e2, t2, n2, o2, i2, u3) {
+  t2 || (t2 = {});
+  var a2, c2, p3 = t2;
+  if ("ref" in p3) for (c2 in p3 = {}, t2) "ref" == c2 ? a2 = t2[c2] : p3[c2] = t2[c2];
+  var l2 = { type: e2, props: p3, key: n2, ref: a2, __k: null, __: null, __b: 0, __e: null, __c: null, constructor: void 0, __v: --f2, __i: -1, __u: 0, __source: i2, __self: u3 };
+  return l.vnode && l.vnode(l2), l2;
+}
+
+// src/components/EncryptedPage.tsx
 var EncryptedPage_default = ((opts) => {
   const { className = "encrypted-page-wrapper" } = opts ?? {};
   const Component = (_props) => {
-    return /* @__PURE__ */ jsx("div", { class: className });
+    return /* @__PURE__ */ u2("div", { class: className });
   };
   Component.css = encrypted_default;
   Component.afterDOMLoaded = encrypted_inline_default;
