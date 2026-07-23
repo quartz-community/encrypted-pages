@@ -40,3 +40,4 @@ coverage/
 
 # Sisyphus working artifacts (plans, research notes)
 .sisyphus/
+dist/
