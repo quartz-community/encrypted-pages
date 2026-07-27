@@ -46,10 +46,6 @@ This plugin ships both a transformer (`EncryptedPages`) and an emitter (`Encrypt
 
 **Plugin ordering matters.** `EncryptedPages` replaces the entire HAST tree of an encrypted page with an opaque ciphertext container, so any transformer that must see the real HTML — in particular `CrawlLinks`, which populates `file.data.links` for the shadow content index — must run **before** `EncryptedPages`. Use the `order` field in your config to ensure `CrawlLinks` has a lower order value than `EncryptedPages`.
 
-### Component
-
-Add the `EncryptedPage` component to your body layout in `quartz.layout.ts`.
-
 ## Options
 
 All options below are set at the single plugin-entry level and are shared between the transformer and the emitter. Quartz passes the same merged options object to both factories automatically.

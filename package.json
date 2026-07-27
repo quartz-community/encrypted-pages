@@ -123,9 +123,7 @@
     },
     "components": {
       "EncryptedPage": {
-        "displayName": "Encrypted Page",
-        "defaultPosition": "body",
-        "defaultPriority": 100
+        "displayName": "Encrypted Page"
       }
     }
   },
