@@ -1,6 +1,6 @@
 {
   "name": "@quartz-community/encrypted-pages",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Password-protected encrypted pages for Quartz. Encrypts page content at build time with AES-256-GCM and decrypts client-side using the Web Crypto API.",
   "type": "module",
   "license": "MIT",
