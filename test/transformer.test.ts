@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EncryptedPages, decrypt } from "../src/transformer";
+import { EncryptedPages, decrypt, inheritedPasswords } from "../src/transformer";
 import { createCtx } from "./helpers";
 import type { Root as HastRoot, Element } from "hast";
 import { VFile } from "vfile";
@@ -276,5 +276,72 @@ describe("EncryptedPages transformer", () => {
 
     expect((vfile.data as Record<string, unknown>).stealth).toBeUndefined();
     expect((vfile.data as Record<string, unknown>).unlisted).toBe(true);
+  });
+});
+
+describe("EncryptedPages on pages rendered from files (quartz-community/bases-page#11)", () => {
+  const note = (slug: string, frontmatter: Record<string, unknown>) => {
+    const vfile = new VFile("");
+    vfile.data = {
+      slug,
+      relativePath: `${slug}.md`,
+      frontmatter: { title: slug, ...frontmatter },
+    } as Record<string, unknown>;
+    return [{ type: "root", children: [] }, vfile] as [HastRoot, VFile];
+  };
+  const content = [note("locked", { password: "hunter2" }), note("public", {})];
+
+  async function runVirtual(data: Record<string, unknown>, options = {}) {
+    const tree = createHastTree("canvas text");
+    const vfile = new VFile("");
+    vfile.data = { frontmatter: { title: "Board", tags: [] }, ...data };
+    // typed locally: @quartz-community/types before 1.3 doesn't declare the hook
+    const transformer = EncryptedPages(options) as unknown as {
+      virtualPageHtmlPlugins(ctx: unknown, content: unknown): unknown[];
+    };
+    const plugins = transformer.virtualPageHtmlPlugins(createCtx(), content);
+    for (const entry of plugins) {
+      const attacher = (Array.isArray(entry) ? entry[0] : entry) as () => (
+        tree: HastRoot,
+        file: VFile,
+      ) => void;
+      attacher()(tree, vfile);
+    }
+    const container = tree.children[0] as Element;
+    const ciphertext = container.properties?.["data-encrypted"] as string | undefined;
+    return { tree, vfile, ciphertext };
+  }
+
+  it("encrypts a canvas linked from an encrypted note with that note's password", async () => {
+    const { vfile, ciphertext } = await runVirtual(
+      { relativePath: "Board.canvas", referencedBy: ["public", "locked"] },
+      { iterations: 1000 },
+    );
+    expect(ciphertext).toBeDefined();
+    expect(decrypt(ciphertext!, "hunter2", 1000)).toContain("canvas text");
+    expect((vfile.data as Record<string, unknown>).encrypted).toBe(true);
+    expect(inheritedPasswords.get(vfile.data)).toBe("hunter2");
+  });
+
+  it("leaves a canvas linked only from unencrypted pages, or from nothing, alone", async () => {
+    for (const referencedBy of [["public"], []]) {
+      const { ciphertext, vfile } = await runVirtual({
+        relativePath: "Board.canvas",
+        referencedBy,
+      });
+      expect(ciphertext).toBeUndefined();
+      expect((vfile.data as Record<string, unknown>).encrypted).toBeUndefined();
+    }
+  });
+
+  it("a drawing stored as Markdown follows its own frontmatter, like a note", async () => {
+    const linked = { relativePath: "Plan.excalidraw.md", referencedBy: ["locked"] };
+    expect((await runVirtual(linked)).ciphertext).toBeUndefined();
+    const own = await runVirtual(
+      { ...linked, frontmatter: { title: "Plan", password: "drawn" } },
+      { iterations: 1000 },
+    );
+    expect(decrypt(own.ciphertext!, "drawn", 1000)).toContain("canvas text");
+    expect(inheritedPasswords.has(own.vfile.data)).toBe(false);
   });
 });

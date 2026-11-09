@@ -6,7 +6,7 @@ import type { Root as HastRoot, Element } from "hast";
 import { VFile } from "vfile";
 import { EncryptedContentIndex, SHADOW_INDEX_VERSION } from "../src/emitter";
 import type { ShadowIndexFile, ShadowContentIndexEntry } from "../src/emitter";
-import { decrypt } from "../src/transformer";
+import { decrypt, inheritedPasswords } from "../src/transformer";
 import { createCtx } from "./helpers";
 import type { ProcessedContent } from "@quartz-community/types";
 
@@ -215,5 +215,23 @@ describe("EncryptedContentIndex emitter", () => {
     const slugs = new Set(decoded.map((d) => d.slug));
     expect(slugs).toEqual(new Set(["secret/revealable", "secret/also-revealable"]));
     expect(slugs.has("secret/stealth")).toBe(false);
+  });
+  it("includes a page encrypted with an inherited password (bases-page#11)", async () => {
+    const tree: HastRoot = { type: "root", children: [] };
+    const vfile = new VFile("");
+    vfile.data = {
+      slug: "board.canvas",
+      relativePath: "Board.canvas",
+      frontmatter: { title: "Board" },
+      encrypted: true,
+      unlisted: true,
+    } as Record<string, unknown>;
+    inheritedPasswords.set(vfile.data, "pw1");
+    const shadow = await runEmitter([[tree, vfile]]);
+    expect(shadow.entries).toHaveLength(1);
+    const decoded = JSON.parse(
+      decrypt(shadow.entries[0]!.ciphertext, "pw1", shadow.entries[0]!.iterations),
+    ) as ShadowContentIndexEntry;
+    expect(decoded.slug).toBe("board.canvas");
   });
 });
