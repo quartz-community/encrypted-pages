@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.0
+
+### Minor Changes
+
+- 6e0e79e: Requires Quartz 5.1 (`quartz.quartzVersion: ">=5.1.0"`): it encrypts `.base`, `.canvas` and drawing pages through `virtualPageHtmlPlugins` and `file.data.referencedBy`; on Quartz 5.0 those pages would be published unencrypted. On an older Quartz the build warns, and fails in CI; update Quartz with `npx quartz upgrade`.
+
 ## 1.1.1
 
 ### Patch Changes
