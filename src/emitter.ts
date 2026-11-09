@@ -8,7 +8,7 @@ import type {
   QuartzEmitterPlugin,
 } from "@quartz-community/types";
 import { joinSegments } from "@quartz-community/types";
-import { encryptAesGcm } from "./transformer";
+import { encryptAesGcm, inheritedPasswords } from "./transformer";
 import type { EncryptedContentIndexOptions } from "./types";
 
 export const SHADOW_INDEX_VERSION = 1 as const;
@@ -87,7 +87,7 @@ export const EncryptedContentIndex: QuartzEmitterPlugin<Partial<EncryptedContent
       if (data.stealth === true) continue;
 
       const frontmatter = (data.frontmatter as Record<string, unknown> | undefined) ?? {};
-      const password = frontmatter[passwordField];
+      const password = frontmatter[passwordField] ?? inheritedPasswords.get(file.data);
       if (typeof password !== "string" || password.length === 0) continue;
 
       const iterations = extractIterationsFromTree(tree as Root);

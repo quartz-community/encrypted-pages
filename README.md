@@ -71,6 +71,21 @@ All options below are set at the single plugin-entry level and are shared betwee
 | `unlisted` | `boolean` | Overrides `unlistWhenEncrypted`. `true` forces the page unlisted; `false` forces it listed even when `unlistWhenEncrypted` is also set.                                                                                                                                                                   |
 | `stealth`  | `boolean` | When `true` and the page is encrypted, suppresses the page's entry in the shadow content index. The page stays hidden from every listing surface **even after successful client-side decryption**. Implies `unlisted: true` (overrides any explicit `unlisted: false`). No effect on non-encrypted pages. |
 
+## Bases, canvases and drawings
+
+Pages that page types render from files are encrypted too (Quartz 5.1 or later):
+
+- A drawing stored as Markdown (`.excalidraw.md`) has frontmatter: a `password` there encrypts its
+  page, as for a note.
+- A `.base`, `.canvas` or `.excalidraw` file has no frontmatter. Its page is encrypted with the
+  password of the encrypted published note that links to it (`[[Board.canvas]]`), so a board
+  linked from a protected note is protected with it. When several encrypted notes with different
+  passwords link to it, the first by slug wins. Linked only from unencrypted notes, it stays
+  unencrypted; with `explicit-publish`, a file that no published note links to is not published.
+
+An embed in an encrypted note (`![[Board.canvas]]`) shows as a link to the embedded page after
+unlocking the note: embeds are resolved when the page is rendered, after the note was encrypted.
+
 ## How `unlisted` works
 
 When an encrypted page is marked `unlisted: true`:
