@@ -14,8 +14,10 @@ Two plugins work together:
 ## Installation
 
 ```bash
-npx quartz plugin add github:quartz-community/encrypted-pages
+npx quartz plugin add @quartz-community/encrypted-pages
 ```
+
+It is already included (and enabled) in the default `quartz.config.yaml`.
 
 ## Usage
 
@@ -36,15 +38,17 @@ This plugin ships both a transformer (`EncryptedPages`) and an emitter (`Encrypt
 ### quartz.config.yaml
 
 ```yaml
-- source: github:quartz-community/encrypted-pages
+- source: "@quartz-community/encrypted-pages"
   enabled: true
   options:
     iterations: 600000
     passwordField: password
-    unlistWhenEncrypted: true
+    unlistWhenEncrypted: false
+    outputPath: static/encryptedContentIndex.json
+  order: 900
 ```
 
-**Plugin ordering matters.** `EncryptedPages` replaces the entire HAST tree of an encrypted page with an opaque ciphertext container, so any transformer that must see the real HTML — in particular `CrawlLinks`, which populates `file.data.links` for the shadow content index — must run **before** `EncryptedPages`. Use the `order` field in your config to ensure `CrawlLinks` has a lower order value than `EncryptedPages`.
+**Plugin ordering matters.** `EncryptedPages` replaces the entire HAST tree of an encrypted page with an opaque ciphertext container, so any transformer that must see the real HTML must run **before** it. Its default `order` is `900`, so it runs after the other transformers, including Quartz's built-in link processing (`configuration.links`, order `60`), which populates `file.data.links` for the shadow content index. Keep its `order` above those.
 
 ## Options
 
