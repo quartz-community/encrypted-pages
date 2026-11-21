@@ -345,3 +345,64 @@ describe("EncryptedPages on pages rendered from files (quartz-community/bases-pa
     expect(inheritedPasswords.has(own.vfile.data)).toBe(false);
   });
 });
+
+describe("render-time encryption (encrypted-pages#2, Quartz 5.2 renderTransforms)", () => {
+  const render = (
+    tree: HastRoot,
+    fileData: Record<string, unknown>,
+    fill: (r: HastRoot) => void,
+  ) => {
+    // what Quartz's renderPage does: a copy of the page's tree, before, fill-in, after
+    const { before, after } = EncryptedPages().renderTransforms!(createCtx()) as {
+      before: ((r: HastRoot, s: string, c: unknown) => void)[];
+      after: ((r: HastRoot, s: string, c: unknown) => void)[];
+    };
+    const root = structuredClone(tree);
+    const componentData = { fileData };
+    for (const t of before) t(root, "locked", componentData);
+    fill(root);
+    for (const t of after) t(root, "locked", componentData);
+    return root;
+  };
+  const fillIn = (root: HastRoot) =>
+    root.children.push({ type: "element", tagName: "table", properties: {}, children: [] });
+
+  it("encrypts the content as rendered, with what was filled in, under the same password", async () => {
+    const tree = createHastTree("Locked intro");
+    const vfile = new VFile("");
+    vfile.data = { frontmatter: { title: "Locked", password: "pw" } };
+    await runTransformer(tree, vfile, { iterations: 1000 });
+
+    const root = render(tree, vfile.data, fillIn);
+    const container = root.children[0] as Element;
+    expect(root.children).toHaveLength(1);
+    const plain = decrypt(container.properties?.["data-encrypted"] as string, "pw", 1000);
+    expect(plain).toContain("Locked intro");
+    expect(plain).toContain("<table>");
+    expect(container.properties?.["data-iterations"]).toBe("1000");
+  });
+
+  it("everything else keeps seeing the encrypted tree", async () => {
+    const tree = createHastTree("Secret text");
+    const vfile = new VFile("");
+    vfile.data = { frontmatter: { title: "Locked", password: "pw" } };
+    await runTransformer(tree, vfile, { iterations: 1000 });
+    const { toHtml } = await import("hast-util-to-html");
+    expect(toHtml(tree)).not.toContain("Secret text");
+    // and each render encrypts afresh (a new IV), never in the clear
+    const first = render(tree, vfile.data, fillIn);
+    const second = render(tree, vfile.data, fillIn);
+    expect(toHtml(first)).not.toContain("Secret text");
+    expect((first.children[0] as Element).properties?.["data-encrypted"]).not.toBe(
+      (second.children[0] as Element).properties?.["data-encrypted"],
+    );
+  });
+
+  it("leaves pages without a password, and other pages, alone", async () => {
+    const tree = createHastTree("Open page");
+    const root = render(tree, {}, fillIn);
+    const { toHtml } = await import("hast-util-to-html");
+    expect(toHtml(root)).toContain("Open page");
+    expect(toHtml(root)).toContain("<table>");
+  });
+});
