@@ -87,8 +87,12 @@ Pages that page types render from files are encrypted too (Quartz 5.1 or later):
   passwords link to it, the first by slug wins. Linked only from unencrypted notes, it stays
   unencrypted; with `explicit-publish`, a file that no published note links to is not published.
 
-An embed in an encrypted note (`![[Board.canvas]]`) shows as a link to the embedded page after
-unlocking the note: embeds are resolved when the page is rendered, after the note was encrypted.
+Embeds in an encrypted note (`![[Other note]]`, `![[Board.canvas]]`, `![[Tasks.base]]`, a ` ```base `
+block) show after unlocking the note with Quartz 5.2 or later: Quartz fills them in when it renders
+the page, and the note's content is encrypted again after that (through the transformer's
+`renderTransforms` hook). The note transcluded into other pages, its search entry and everything
+else built from it still only hold the encrypted content. With Quartz 5.1, embeds are filled in
+after the note was encrypted: a transclusion shows as a link and a base as nothing.
 
 ## How `unlisted` works
 
