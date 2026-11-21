@@ -353,10 +353,13 @@ describe("render-time encryption (encrypted-pages#2, Quartz 5.2 renderTransforms
     fill: (r: HastRoot) => void,
   ) => {
     // what Quartz's renderPage does: a copy of the page's tree, before, fill-in, after
-    const { before, after } = EncryptedPages().renderTransforms!(createCtx()) as {
+    // `renderTransforms` is newer than the types this package's CI may install
+    type Transforms = {
       before: ((r: HastRoot, s: string, c: unknown) => void)[];
       after: ((r: HastRoot, s: string, c: unknown) => void)[];
     };
+    const plugin = EncryptedPages() as unknown as { renderTransforms(ctx: unknown): Transforms };
+    const { before, after } = plugin.renderTransforms(createCtx());
     const root = structuredClone(tree);
     const componentData = { fileData };
     for (const t of before) t(root, "locked", componentData);
