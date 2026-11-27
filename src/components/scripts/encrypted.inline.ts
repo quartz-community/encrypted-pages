@@ -202,21 +202,26 @@ async function decryptShadowEntries(shadowFile, passwords, alreadyDecrypted) {
 }
 
 async function applyShadowPatches(patch) {
-  const slugs = Object.keys(patch);
-  if (slugs.length === 0) return;
+  if (Object.keys(patch).length === 0) return;
 
+  // The patch holds every entry unlocked this session and is applied on every navigation, but the
+  // content index survives SPA navigations: only announce entries this call actually added, or
+  // every component that sets up on `render` runs again on each page.
+  const slugs = [];
   try {
     const base = await (typeof fetchData !== "undefined" ? fetchData : Promise.resolve(null));
     if (!base || typeof base !== "object") return;
     const root = base.content && typeof base.content === "object" ? base.content : base;
-    for (const slug of slugs) {
+    for (const slug of Object.keys(patch)) {
       if (!(slug in root)) {
         root[slug] = patch[slug];
+        slugs.push(slug);
       }
     }
   } catch {
     return;
   }
+  if (slugs.length === 0) return;
 
   document.dispatchEvent(new CustomEvent("content-index-updated", { detail: { slugs } }));
   document.dispatchEvent(new CustomEvent("render"));

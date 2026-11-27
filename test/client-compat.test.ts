@@ -352,15 +352,27 @@ describe("browser: patching the content index with unlocked shadow entries", () 
     ]);
   });
 
-  // bug: the patch holds every entry unlocked this session (cached ones too), and is applied on
-  // every navigation; `render` (and `content-index-updated`) are dispatched even when the index
-  // already has them all. Every component that sets up on `render` then runs again on each
-  // page: darkmode/reader-mode toggles get a second click listener (a click toggles twice),
-  // syntax-highlighting adds a second copy button to every code block.
-  it.fails("dispatches nothing when the content index already holds every entry", async () => {
+  // regression: the patch holds every entry unlocked this session (cached ones too) and is applied
+  // on every navigation; `render` used to be dispatched each time even when the index already had
+  // them all, re-running every component that sets up on `render` (darkmode, reader-mode, ...).
+  it("dispatches nothing when the content index already holds every entry", async () => {
     const index: Record<string, unknown> = { "secret/a": { title: "A" } };
     const { apply, events } = applyShadowPatches(index);
     await apply({ "secret/a": { title: "A" } });
     expect(events).toEqual([]);
+  });
+
+  it("announces only the entries it added, once, when applied on several navigations", async () => {
+    const index: Record<string, unknown> = { "secret/a": { title: "A" } };
+    const { apply, events } = applyShadowPatches(index);
+    const patch = { "secret/a": { title: "A" }, "secret/b": { title: "B" } };
+    await apply(patch); // the unlock
+    await apply(patch); // the next navigation
+    await apply(patch); // and the one after
+    expect(index["secret/b"]).toEqual({ title: "B" });
+    expect(events).toEqual([
+      { type: "content-index-updated", detail: { slugs: ["secret/b"] } },
+      { type: "render", detail: null },
+    ]);
   });
 });
