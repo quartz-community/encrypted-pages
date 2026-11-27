@@ -8,7 +8,7 @@ import type {
   QuartzEmitterPlugin,
 } from "@quartz-community/types";
 import { joinSegments } from "@quartz-community/types";
-import { encryptAesGcm, inheritedPasswords } from "./transformer";
+import { encryptAesGcm, inheritedPasswords, textPassword } from "./transformer";
 import type { EncryptedContentIndexOptions } from "./types";
 
 export const SHADOW_INDEX_VERSION = 1 as const;
@@ -87,8 +87,10 @@ export const EncryptedContentIndex: QuartzEmitterPlugin<Partial<EncryptedContent
       if (data.stealth === true) continue;
 
       const frontmatter = (data.frontmatter as Record<string, unknown> | undefined) ?? {};
-      const password = frontmatter[passwordField] ?? inheritedPasswords.get(file.data);
-      if (typeof password !== "string" || password.length === 0) continue;
+      // a page locked because its password isn't text or a number has no entry: nobody can unlock it
+      const password =
+        textPassword(frontmatter[passwordField]) ?? textPassword(inheritedPasswords.get(file.data));
+      if (password === undefined) continue;
 
       const iterations = extractIterationsFromTree(tree as Root);
       const shadowEntry = buildShadowEntry(data);

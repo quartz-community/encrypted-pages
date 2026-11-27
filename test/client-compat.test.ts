@@ -151,18 +151,14 @@ describe("browser decryption of build-time encryption", () => {
     expect(await browserDecrypt(ciphertext, "pw", ITERATIONS)).toBe('{"slug":"a"}');
   });
 
-  // bug: a YAML number (`password: 1234`) is not a string, so the page is published
-  // unencrypted, with no warning. The README only says "add a password field".
-  it.fails(
-    "encrypts a page whose frontmatter password is a number (`password: 1234`)",
-    async () => {
-      const { file, container } = await encryptPage("PIN-protected", { password: 1234 });
-      expect(file.data.encrypted).toBe(true);
-      expect(
-        await browserDecrypt(container.properties["data-encrypted"] as string, "1234", ITERATIONS),
-      ).toContain("PIN-protected");
-    },
-  );
+  // regression: a YAML number (`password: 1234`) used to be ignored, publishing the page unencrypted
+  it("encrypts a page whose frontmatter password is a number (`password: 1234`)", async () => {
+    const { file, container } = await encryptPage("PIN-protected", { password: 1234 });
+    expect(file.data.encrypted).toBe(true);
+    expect(
+      await browserDecrypt(container.properties["data-encrypted"] as string, "1234", ITERATIONS),
+    ).toContain("PIN-protected");
+  });
 });
 
 describe("shadow content index, end to end", () => {

@@ -153,6 +153,23 @@ describe("EncryptedContentIndex emitter", () => {
     expect(shadow.entries).toHaveLength(0);
   });
 
+  it("encrypts the entry of a page with a numeric password with its string form", async () => {
+    const shadow = await runEmitter([
+      makeEncryptedContent("secret/pin", 1234 as unknown as string, { iterations: 1000 }),
+    ]);
+    expect(shadow.entries).toHaveLength(1);
+    const decoded = JSON.parse(decrypt(shadow.entries[0]!.ciphertext, "1234", 1000));
+    expect(decoded.slug).toBe("secret/pin");
+  });
+
+  it("writes no entry for a page locked because its password is neither text nor a number", async () => {
+    const shadow = await runEmitter([
+      makeEncryptedContent("secret/list", ["a", "b"] as unknown as string),
+      makeEncryptedContent("secret/bool", true as unknown as string),
+    ]);
+    expect(shadow.entries).toHaveLength(0);
+  });
+
   it("encrypts with per-page iteration count from the tree", async () => {
     const content = [makeEncryptedContent("secret/page-a", "pw1", { iterations: 1000 })];
     const shadow = await runEmitter(content);
