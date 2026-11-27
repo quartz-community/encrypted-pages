@@ -328,3 +328,43 @@ describe("documented details", () => {
     }
   });
 });
+
+describe("browser: patching the content index with unlocked shadow entries", () => {
+  /** The browser's applyShadowPatches(), against a page whose content index is `index`. */
+  function applyShadowPatches(index: Record<string, unknown>) {
+    const match = inlineSource.match(/async function applyShadowPatches\(patch\) \{[\s\S]*?\n\}/);
+    expect(match).not.toBeNull();
+    const events: { type: string; detail: unknown }[] = [];
+    const document = {
+      dispatchEvent: (e: CustomEvent) => events.push({ type: e.type, detail: e.detail }),
+    };
+    const fn = new Function("document", "fetchData", `${match![0]}\nreturn applyShadowPatches;`)(
+      document,
+      Promise.resolve(index),
+    ) as (patch: Record<string, unknown>) => Promise<void>;
+    return { apply: fn, events };
+  }
+
+  it("adds newly unlocked pages to the content index and tells graph/explorer/search", async () => {
+    const index: Record<string, unknown> = { public: { title: "Public" } };
+    const { apply, events } = applyShadowPatches(index);
+    await apply({ "secret/a": { title: "A" } });
+    expect(index["secret/a"]).toEqual({ title: "A" });
+    expect(events).toEqual([
+      { type: "content-index-updated", detail: { slugs: ["secret/a"] } },
+      { type: "render", detail: null },
+    ]);
+  });
+
+  // bug: the patch holds every entry unlocked this session (cached ones too), and is applied on
+  // every navigation; `render` (and `content-index-updated`) are dispatched even when the index
+  // already has them all. Every component that sets up on `render` then runs again on each
+  // page: darkmode/reader-mode toggles get a second click listener (a click toggles twice),
+  // syntax-highlighting adds a second copy button to every code block.
+  it.fails("dispatches nothing when the content index already holds every entry", async () => {
+    const index: Record<string, unknown> = { "secret/a": { title: "A" } };
+    const { apply, events } = applyShadowPatches(index);
+    await apply({ "secret/a": { title: "A" } });
+    expect(events).toEqual([]);
+  });
+});
