@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.1
+
+### Patch Changes
+
+- 274e3f2: A custom `outputPath` for the shadow content index now works: the emitter tells the browser script where it wrote the file, which previously always fetched `static/encryptedContentIndex.json`, so unlocked unlisted pages never appeared in graph, explorer or search. With `unlistWhenEncrypted` on, the build now warns (as documented) when the `EncryptedContentIndex` emitter isn't registered.
+- 913ff64: A numeric frontmatter password (`password: 1234`) now encrypts the page with its string form; previously the page was published unencrypted without a warning. A password that is neither text nor a number (a list, an object, `true`/`false`) no longer publishes the page in the clear either: the page is locked with a random key and the build warns, and the build also warns when YAML reads a password such as `0042` as a different number.
+- 9003953: After an unlisted encrypted page was unlocked, every later navigation dispatched `content-index-updated` and `render` again, re-running other components' setup on each page (a theme toggle that toggled twice, duplicate copy buttons). They are now dispatched only when unlocking actually adds pages to the content index.
+
 ## 1.3.0
 
 ### Minor Changes
