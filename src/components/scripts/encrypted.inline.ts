@@ -130,15 +130,23 @@ function setLoading(container, loading) {
 }
 
 function resolveShadowIndexPath() {
+  // set by the EncryptedContentIndex emitter when its `outputPath` isn't the default
+  const configured =
+    typeof window !== "undefined" && typeof window.__encryptedPagesShadowIndexPath === "string"
+      ? window.__encryptedPagesShadowIndexPath
+      : "static/encryptedContentIndex.json";
   const scripts = document.querySelectorAll("script");
   for (const script of scripts) {
     const text = script.textContent ?? "";
     const match = text.match(/fetch\(["']([^"']+contentIndex\.json)["']\)/);
     if (match) {
+      // Quartz fetches `<path to the site root>static/contentIndex.json`
+      const root = match[1].match(/^(.*?)static\/contentIndex\.json$/);
+      if (root) return root[1] + configured;
       return match[1].replace(/contentIndex\.json$/, "encryptedContentIndex.json");
     }
   }
-  return new URL("static/encryptedContentIndex.json", document.baseURI).toString();
+  return new URL(configured, document.baseURI).toString();
 }
 
 let shadowIndexPromise = null;
@@ -202,21 +210,26 @@ async function decryptShadowEntries(shadowFile, passwords, alreadyDecrypted) {
 }
 
 async function applyShadowPatches(patch) {
-  const slugs = Object.keys(patch);
-  if (slugs.length === 0) return;
+  if (Object.keys(patch).length === 0) return;
 
+  // The patch holds every entry unlocked this session and is applied on every navigation, but the
+  // content index survives SPA navigations: only announce entries this call actually added, or
+  // every component that sets up on `render` runs again on each page.
+  const slugs = [];
   try {
     const base = await (typeof fetchData !== "undefined" ? fetchData : Promise.resolve(null));
     if (!base || typeof base !== "object") return;
     const root = base.content && typeof base.content === "object" ? base.content : base;
-    for (const slug of slugs) {
+    for (const slug of Object.keys(patch)) {
       if (!(slug in root)) {
         root[slug] = patch[slug];
+        slugs.push(slug);
       }
     }
   } catch {
     return;
   }
+  if (slugs.length === 0) return;
 
   document.dispatchEvent(new CustomEvent("content-index-updated", { detail: { slugs } }));
   document.dispatchEvent(new CustomEvent("render"));

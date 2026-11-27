@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { EncryptedPages, decrypt, inheritedPasswords } from "../src/transformer";
 import { createCtx } from "./helpers";
 import type { Root as HastRoot, Element } from "hast";
@@ -144,15 +144,87 @@ describe("EncryptedPages transformer", () => {
     expect((vfile.data as Record<string, unknown>).encrypted).toBeUndefined();
   });
 
-  it("ignores non-string password values", async () => {
-    const tree = createHastTree("Not encrypted");
+  it("encrypts with a numeric password's string form (`password: 12345`)", async () => {
+    const tree = createHastTree("PIN content");
     const vfile = new VFile("");
     vfile.data = { frontmatter: { title: "Test", password: 12345 } };
 
+    await runTransformer(tree, vfile, { iterations: 1000 });
+
+    expect((vfile.data as Record<string, unknown>).encrypted).toBe(true);
+    const container = tree.children[0] as Element;
+    expect(decrypt(container.properties["data-encrypted"] as string, "12345", 1000)).toContain(
+      "PIN content",
+    );
+  });
+
+  it("warns when YAML reads a password as a number that differs from what was written", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const tree = createHastTree("PIN content");
+      const vfile = new VFile({
+        path: "pin.md",
+        value: "---\ntitle: Test\npassword: 0042 # the PIN\n---\nPIN content",
+      });
+      vfile.data = { frontmatter: { title: "Test", password: 42 } } as VFile["data"];
+      (vfile.data as Record<string, unknown>).relativePath = "pin.md";
+      await runTransformer(tree, vfile, { iterations: 1000 });
+      const container = tree.children[0] as Element;
+      expect(decrypt(container.properties["data-encrypted"] as string, "42", 1000)).toContain(
+        "PIN content",
+      );
+      expect(warn).toHaveBeenCalledOnce();
+      expect(warn.mock.calls[0]![0]).toMatch(/pin\.md.*0042.*"42".*Quote/);
+
+      warn.mockClear();
+      const plain = new VFile({ value: "---\npassword: 1234\n---\n" });
+      plain.data = { frontmatter: { title: "T", password: 1234 } };
+      await runTransformer(createHastTree("x"), plain, { iterations: 1000 });
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it.each([
+    ["a list", ["a", "b"], "a,b"],
+    ["an object", { a: 1 }, "[object Object]"],
+    ["true", true, "true"],
+    ["false", false, "false"],
+  ])(
+    "never publishes a page whose password is %s in the clear: locked with a random key, and a warning",
+    async (_kind, password, stringForm) => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        const tree = createHastTree("Secret content");
+        const vfile = new VFile("");
+        vfile.data = { frontmatter: { title: "Test", password } };
+        (vfile.data as Record<string, unknown>).relativePath = "odd.md";
+
+        await runTransformer(tree, vfile, { iterations: 1000 });
+
+        expect((vfile.data as Record<string, unknown>).encrypted).toBe(true);
+        const container = tree.children[0] as Element;
+        expect(JSON.stringify(tree)).not.toContain("Secret content");
+        expect(() =>
+          decrypt(container.properties["data-encrypted"] as string, stringForm, 1000),
+        ).toThrow();
+        expect(warn).toHaveBeenCalledOnce();
+        expect(warn.mock.calls[0]![0]).toMatch(/odd\.md.*"password".*locked/);
+      } finally {
+        warn.mockRestore();
+      }
+    },
+  );
+
+  it.each([null, ""])("leaves a page with an empty password (%j) unencrypted", async (password) => {
+    const tree = createHastTree("Public");
+    const vfile = new VFile("");
+    vfile.data = { frontmatter: { title: "Test", password } };
+
     await runTransformer(tree, vfile);
 
-    const article = tree.children[0] as Element;
-    expect(article.tagName).toBe("article");
+    expect((tree.children[0] as Element).tagName).toBe("article");
     expect((vfile.data as Record<string, unknown>).encrypted).toBeUndefined();
   });
 
@@ -407,5 +479,30 @@ describe("render-time encryption (encrypted-pages#2, Quartz 5.2 renderTransforms
     const { toHtml } = await import("hast-util-to-html");
     expect(toHtml(root)).toContain("Open page");
     expect(toHtml(root)).toContain("<table>");
+  });
+});
+
+describe("missing EncryptedContentIndex emitter", () => {
+  const ctxWithEmitters = (names: string[]) =>
+    createCtx({
+      cfg: { plugins: { emitters: names.map((name) => ({ name })) } } as never,
+    });
+
+  it("warns once when unlistWhenEncrypted is on and the build has no EncryptedContentIndex", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      EncryptedPages({ unlistWhenEncrypted: true }).htmlPlugins!(
+        ctxWithEmitters(["ContentPage", "EncryptedContentIndex"]),
+      );
+      EncryptedPages({ unlistWhenEncrypted: false }).htmlPlugins!(ctxWithEmitters(["ContentPage"]));
+      expect(warn).not.toHaveBeenCalled();
+
+      EncryptedPages({ unlistWhenEncrypted: true }).htmlPlugins!(ctxWithEmitters(["ContentPage"]));
+      EncryptedPages({ unlistWhenEncrypted: true }).htmlPlugins!(ctxWithEmitters(["ContentPage"]));
+      expect(warn).toHaveBeenCalledOnce();
+      expect(warn.mock.calls[0]![0]).toMatch(/EncryptedContentIndex emitter is not registered/);
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

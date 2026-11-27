@@ -8,7 +8,7 @@ import type {
   QuartzEmitterPlugin,
 } from "@quartz-community/types";
 import { joinSegments } from "@quartz-community/types";
-import { encryptAesGcm, inheritedPasswords } from "./transformer";
+import { encryptAesGcm, inheritedPasswords, textPassword } from "./transformer";
 import type { EncryptedContentIndexOptions } from "./types";
 
 export const SHADOW_INDEX_VERSION = 1 as const;
@@ -87,8 +87,10 @@ export const EncryptedContentIndex: QuartzEmitterPlugin<Partial<EncryptedContent
       if (data.stealth === true) continue;
 
       const frontmatter = (data.frontmatter as Record<string, unknown> | undefined) ?? {};
-      const password = frontmatter[passwordField] ?? inheritedPasswords.get(file.data);
-      if (typeof password !== "string" || password.length === 0) continue;
+      // a page locked because its password isn't text or a number has no entry: nobody can unlock it
+      const password =
+        textPassword(frontmatter[passwordField]) ?? textPassword(inheritedPasswords.get(file.data));
+      if (password === undefined) continue;
 
       const iterations = extractIterationsFromTree(tree as Root);
       const shadowEntry = buildShadowEntry(data);
@@ -117,8 +119,30 @@ export const EncryptedContentIndex: QuartzEmitterPlugin<Partial<EncryptedContent
     name: "EncryptedContentIndex",
     emit: emitAll,
     partialEmit: emitAll,
+    externalResources() {
+      // the browser script looks for the default path next to contentIndex.json; tell it a custom one
+      if (options.outputPath === defaultOptions.outputPath) return {};
+      return {
+        js: [
+          {
+            loadTime: "beforeDOMReady",
+            contentType: "inline",
+            spaPreserve: true,
+            script: shadowIndexPathScript(options.outputPath),
+          },
+        ],
+      };
+    },
   };
 };
+
+/** The global the browser script reads the shadow index path (relative to the site root) from. */
+export const SHADOW_INDEX_PATH_GLOBAL = "__encryptedPagesShadowIndexPath";
+
+function shadowIndexPathScript(outputPath: string): string {
+  const value = JSON.stringify(outputPath.replace(/^\/+/, "")).replace(/</g, "\\u003c");
+  return `window.${SHADOW_INDEX_PATH_GLOBAL} = ${value};`;
+}
 
 function extractIterationsFromTree(tree: Root): number {
   for (const child of tree.children ?? []) {

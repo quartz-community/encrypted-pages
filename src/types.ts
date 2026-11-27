@@ -52,9 +52,9 @@ export interface EncryptedPagesOptions {
    * NOTE: When `true`, the `EncryptedContentIndex` emitter MUST also be
    * registered in your Quartz configuration. Without it, unlisted encrypted
    * pages cannot be dynamically revealed after decryption and will remain
-   * invisible to graph/explorer/search for the entire session. The
-   * transformer emits a console warning at build time if it detects the
-   * emitter is missing.
+   * invisible to graph/explorer/search for the entire session. Quartz
+   * registers both from one config entry; when the emitter is missing from
+   * the build's emitters, the transformer warns once at build time.
    *
    * @default false
    */

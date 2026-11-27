@@ -156,14 +156,78 @@ function encryptTree(
   }
 }
 
-function passwordIn(frontmatter: unknown, options: EncryptedPagesOptions): string | undefined {
-  const password = (frontmatter as Record<string, unknown> | undefined)?.[options.passwordField];
-  return typeof password === "string" && password.length > 0 ? password : undefined;
+/**
+ * The password a frontmatter value stands for: a string as is, a YAML number (`password: 1234`)
+ * as its string form. `undefined` for no password (absent, `null`, `""`).
+ */
+export function textPassword(value: unknown): string | undefined {
+  if (typeof value === "string") return value.length > 0 ? value : undefined;
+  if (typeof value === "number" || typeof value === "bigint") return String(value);
+  return undefined;
+}
+
+function hasPasswordValue(value: unknown): boolean {
+  return value !== undefined && value !== null && value !== "";
+}
+
+/**
+ * The password of a page with this frontmatter, or `undefined` when it has none. A value that is
+ * neither text nor a number (a list, an object, `true`/`false`) must not publish the page in the
+ * clear, and its string form (`"true"`, `"a,b"`, `"[object Object]"`) would be easy to guess: the
+ * page is encrypted with a random key instead, so it stays locked for everyone, and the build
+ * warns.
+ */
+function passwordIn(
+  frontmatter: unknown,
+  options: EncryptedPagesOptions,
+  file?: VFile,
+): string | undefined {
+  const value = (frontmatter as Record<string, unknown> | undefined)?.[options.passwordField];
+  const password = textPassword(value);
+  if (password !== undefined) {
+    if (file && typeof value === "number") warnIfNumberLosesDigits(file, options, value);
+    return password;
+  }
+  if (!hasPasswordValue(value)) return undefined;
+  if (file) {
+    const kind = Array.isArray(value)
+      ? "a list"
+      : typeof value === "boolean"
+        ? "a boolean"
+        : "not text";
+    console.warn(
+      `[encrypted-pages] ${pathOf(file)}: frontmatter "${options.passwordField}" is ${kind}, not a password. ` +
+        `The page is published locked and no password opens it; write the password as text (quoted if needed).`,
+    );
+  }
+  return crypto.randomBytes(KEY_LENGTH).toString("base64");
+}
+
+function pathOf(file: VFile): string {
+  const data = file.data as Record<string, unknown> | undefined;
+  return String(data?.relativePath ?? data?.filePath ?? file.path ?? "a page");
+}
+
+/**
+ * YAML reads `password: 0042` as the number 42, so the page's password is "42". Warn when the
+ * value as written in the source differs from that (leading zeros, `1e3`, `0x1F`, long numbers).
+ */
+function warnIfNumberLosesDigits(file: VFile, options: EncryptedPagesOptions, value: number) {
+  const source = typeof file.value === "string" ? file.value : "";
+  const frontmatter = source.match(/^---\r?\n([\s\S]*?)\r?\n---/)?.[1];
+  if (!frontmatter) return;
+  const field = options.passwordField.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const raw = frontmatter.match(new RegExp(`^${field}\\s*:[ \\t]*([^\\s#]+)`, "m"))?.[1];
+  if (raw === undefined || raw === String(value)) return;
+  console.warn(
+    `[encrypted-pages] ${pathOf(file)}: frontmatter "${options.passwordField}: ${raw}" is read as the number ${String(value)}, ` +
+      `so the page's password is "${String(value)}". Quote it ("${raw}") to use it as written.`,
+  );
 }
 
 const rehypeEncryptedPages = (options: EncryptedPagesOptions): Plugin<[], HastRoot> => {
   return () => (tree: HastRoot, file: VFile) => {
-    const password = passwordIn(file.data?.frontmatter, options);
+    const password = passwordIn(file.data?.frontmatter, options, file);
     if (password) encryptTree(tree, file, password, options, true);
   };
 };
@@ -225,7 +289,7 @@ const rehypeEncryptedVirtualPages = (
   }
 
   return () => (tree: HastRoot, file: VFile) => {
-    const own = passwordIn(file.data?.frontmatter, options);
+    const own = passwordIn(file.data?.frontmatter, options, file);
     if (own) {
       encryptTree(tree, file, own, options);
       return;
@@ -247,6 +311,28 @@ const rehypeEncryptedVirtualPages = (
   };
 };
 
+let warnedShadowIndexMissing = false;
+
+/**
+ * `unlistWhenEncrypted` relies on the EncryptedContentIndex emitter to reveal unlocked pages in
+ * graph/explorer/search. Quartz instantiates it from the same config entry; a config that
+ * registers only the transformer (TypeScript API) gets a warning, once per process.
+ */
+function warnIfShadowIndexMissing(ctx: BuildCtx | undefined) {
+  if (warnedShadowIndexMissing) return;
+  const emitters = (ctx?.cfg as { plugins?: { emitters?: unknown } } | undefined)?.plugins
+    ?.emitters;
+  if (!Array.isArray(emitters) || emitters.length === 0) return;
+  const names = emitters.map((e) => (e as { name?: unknown } | undefined)?.name);
+  if (!names.every((name) => typeof name === "string")) return; // can't tell
+  if (names.includes("EncryptedContentIndex")) return;
+  warnedShadowIndexMissing = true;
+  console.warn(
+    "[encrypted-pages] unlistWhenEncrypted is on but the EncryptedContentIndex emitter is not registered: " +
+      "unlisted encrypted pages won't appear in graph, explorer or search after unlocking.",
+  );
+}
+
 export const EncryptedPages: QuartzTransformerPlugin<Partial<EncryptedPagesOptions>> = (
   userOptions?: Partial<EncryptedPagesOptions>,
 ) => {
@@ -257,7 +343,8 @@ export const EncryptedPages: QuartzTransformerPlugin<Partial<EncryptedPagesOptio
     renderTransforms(): typeof renderTransforms;
   } = {
     name: "EncryptedPages",
-    htmlPlugins(): PluggableList {
+    htmlPlugins(ctx): PluggableList {
+      if (options.unlistWhenEncrypted) warnIfShadowIndexMissing(ctx);
       return [rehypeEncryptedPages(options)];
     },
     virtualPageHtmlPlugins(_ctx, content): PluggableList {
