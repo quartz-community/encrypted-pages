@@ -119,8 +119,30 @@ export const EncryptedContentIndex: QuartzEmitterPlugin<Partial<EncryptedContent
     name: "EncryptedContentIndex",
     emit: emitAll,
     partialEmit: emitAll,
+    externalResources() {
+      // the browser script looks for the default path next to contentIndex.json; tell it a custom one
+      if (options.outputPath === defaultOptions.outputPath) return {};
+      return {
+        js: [
+          {
+            loadTime: "beforeDOMReady",
+            contentType: "inline",
+            spaPreserve: true,
+            script: shadowIndexPathScript(options.outputPath),
+          },
+        ],
+      };
+    },
   };
 };
+
+/** The global the browser script reads the shadow index path (relative to the site root) from. */
+export const SHADOW_INDEX_PATH_GLOBAL = "__encryptedPagesShadowIndexPath";
+
+function shadowIndexPathScript(outputPath: string): string {
+  const value = JSON.stringify(outputPath.replace(/^\/+/, "")).replace(/</g, "\\u003c");
+  return `window.${SHADOW_INDEX_PATH_GLOBAL} = ${value};`;
+}
 
 function extractIterationsFromTree(tree: Root): number {
   for (const child of tree.children ?? []) {

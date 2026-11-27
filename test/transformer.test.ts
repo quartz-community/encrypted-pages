@@ -481,3 +481,28 @@ describe("render-time encryption (encrypted-pages#2, Quartz 5.2 renderTransforms
     expect(toHtml(root)).toContain("<table>");
   });
 });
+
+describe("missing EncryptedContentIndex emitter", () => {
+  const ctxWithEmitters = (names: string[]) =>
+    createCtx({
+      cfg: { plugins: { emitters: names.map((name) => ({ name })) } } as never,
+    });
+
+  it("warns once when unlistWhenEncrypted is on and the build has no EncryptedContentIndex", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      EncryptedPages({ unlistWhenEncrypted: true }).htmlPlugins!(
+        ctxWithEmitters(["ContentPage", "EncryptedContentIndex"]),
+      );
+      EncryptedPages({ unlistWhenEncrypted: false }).htmlPlugins!(ctxWithEmitters(["ContentPage"]));
+      expect(warn).not.toHaveBeenCalled();
+
+      EncryptedPages({ unlistWhenEncrypted: true }).htmlPlugins!(ctxWithEmitters(["ContentPage"]));
+      EncryptedPages({ unlistWhenEncrypted: true }).htmlPlugins!(ctxWithEmitters(["ContentPage"]));
+      expect(warn).toHaveBeenCalledOnce();
+      expect(warn.mock.calls[0]![0]).toMatch(/EncryptedContentIndex emitter is not registered/);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+});

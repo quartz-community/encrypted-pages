@@ -311,6 +311,28 @@ const rehypeEncryptedVirtualPages = (
   };
 };
 
+let warnedShadowIndexMissing = false;
+
+/**
+ * `unlistWhenEncrypted` relies on the EncryptedContentIndex emitter to reveal unlocked pages in
+ * graph/explorer/search. Quartz instantiates it from the same config entry; a config that
+ * registers only the transformer (TypeScript API) gets a warning, once per process.
+ */
+function warnIfShadowIndexMissing(ctx: BuildCtx | undefined) {
+  if (warnedShadowIndexMissing) return;
+  const emitters = (ctx?.cfg as { plugins?: { emitters?: unknown } } | undefined)?.plugins
+    ?.emitters;
+  if (!Array.isArray(emitters) || emitters.length === 0) return;
+  const names = emitters.map((e) => (e as { name?: unknown } | undefined)?.name);
+  if (!names.every((name) => typeof name === "string")) return; // can't tell
+  if (names.includes("EncryptedContentIndex")) return;
+  warnedShadowIndexMissing = true;
+  console.warn(
+    "[encrypted-pages] unlistWhenEncrypted is on but the EncryptedContentIndex emitter is not registered: " +
+      "unlisted encrypted pages won't appear in graph, explorer or search after unlocking.",
+  );
+}
+
 export const EncryptedPages: QuartzTransformerPlugin<Partial<EncryptedPagesOptions>> = (
   userOptions?: Partial<EncryptedPagesOptions>,
 ) => {
@@ -321,7 +343,8 @@ export const EncryptedPages: QuartzTransformerPlugin<Partial<EncryptedPagesOptio
     renderTransforms(): typeof renderTransforms;
   } = {
     name: "EncryptedPages",
-    htmlPlugins(): PluggableList {
+    htmlPlugins(ctx): PluggableList {
+      if (options.unlistWhenEncrypted) warnIfShadowIndexMissing(ctx);
       return [rehypeEncryptedPages(options)];
     },
     virtualPageHtmlPlugins(_ctx, content): PluggableList {

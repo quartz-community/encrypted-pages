@@ -37,15 +37,32 @@ const browserDecrypt: (data: string, password: string, iterations: number) => Pr
     return new Function("window", `${body}\nreturn decryptContent;`)({ crypto: webcrypto });
   })();
 
-/** The browser's resolveShadowIndexPath(), against a page whose scripts are `scripts`. */
-function browserShadowIndexUrl(scripts: string[], baseURI: string): string {
+/**
+ * The browser's resolveShadowIndexPath(), against a page whose scripts are `scripts`, after the
+ * page's `beforeDOMReady` scripts (`headScripts`, e.g. the emitter's) ran.
+ */
+function browserShadowIndexUrl(scripts: string[], baseURI: string, headScripts: string[] = []) {
   const match = inlineSource.match(/function resolveShadowIndexPath\(\) \{[\s\S]*?\n\}/);
   expect(match).not.toBeNull();
   const document = {
     baseURI,
     querySelectorAll: () => scripts.map((textContent) => ({ textContent })),
   };
-  return new Function("document", `${match![0]}\nreturn resolveShadowIndexPath();`)(document);
+  const window: Record<string, unknown> = {};
+  for (const script of headScripts) new Function("window", script)(window);
+  return new Function("document", "window", `${match![0]}\nreturn resolveShadowIndexPath();`)(
+    document,
+    window,
+  ) as string;
+}
+
+/** The inline scripts the emitter adds to every page. */
+function emitterHeadScripts(options: Parameters<typeof EncryptedContentIndex>[0]) {
+  const resources = EncryptedContentIndex(options).externalResources?.(createCtx()) ?? {};
+  return (resources.js ?? []).map((js) => {
+    expect(js).toMatchObject({ loadTime: "beforeDOMReady", contentType: "inline" });
+    return (js as { script: string }).script;
+  });
 }
 
 function tree(text: string): HastRoot {
@@ -241,15 +258,35 @@ describe("shadow content index, end to end", () => {
     );
   });
 
-  // bug: the README documents `outputPath` for the emitter, but the client script always fetches
-  // `static/encryptedContentIndex.json` (derived from contentIndex.json's URL); nothing tells it
-  // the configured path. With a custom outputPath, unlisted pages are never revealed in
-  // graph/explorer/search after unlocking.
-  it.fails("the browser fetches the shadow index from the configured outputPath", () => {
-    const outputPath = "data/shadow.json";
+  // regression: the client always fetched `static/encryptedContentIndex.json`; nothing told it the
+  // configured path, so with a custom outputPath unlocked pages never appeared in graph/explorer.
+  it("the browser fetches the shadow index from the configured outputPath", () => {
+    const head = emitterHeadScripts({ outputPath: "data/shadow.json" });
+    expect(head).toHaveLength(1);
     const scripts = ['const fetchData = fetch("./static/contentIndex.json").then(r => r.json())'];
-    expect(browserShadowIndexUrl(scripts, "https://example.com/page")).toMatch(
-      new RegExp(`${outputPath}$`),
+    expect(browserShadowIndexUrl(scripts, "https://example.com/page", head)).toBe(
+      "./data/shadow.json",
+    );
+    // under a base path, two folders deep
+    const nested = [
+      'const fetchData = fetch("../../static/contentIndex.json").then(r => r.json())',
+    ];
+    expect(browserShadowIndexUrl(nested, "https://example.com/sub/a/b/page", head)).toBe(
+      "../../data/shadow.json",
+    );
+    // without Quartz's script: relative to the document
+    expect(browserShadowIndexUrl([], "https://example.com/sub/page", head)).toBe(
+      "https://example.com/sub/data/shadow.json",
+    );
+  });
+
+  it("adds no script to pages for the default outputPath, and escapes a custom one", () => {
+    expect(emitterHeadScripts({})).toEqual([]);
+    expect(emitterHeadScripts({ outputPath: "static/encryptedContentIndex.json" })).toEqual([]);
+    const [script] = emitterHeadScripts({ outputPath: '/x/</script>".json' });
+    expect(script).not.toContain("</script>");
+    expect(browserShadowIndexUrl([], "https://example.com/", [script!])).toBe(
+      "https://example.com/x/%3C/script%3E%22.json",
     );
   });
 });

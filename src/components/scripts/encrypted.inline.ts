@@ -130,15 +130,23 @@ function setLoading(container, loading) {
 }
 
 function resolveShadowIndexPath() {
+  // set by the EncryptedContentIndex emitter when its `outputPath` isn't the default
+  const configured =
+    typeof window !== "undefined" && typeof window.__encryptedPagesShadowIndexPath === "string"
+      ? window.__encryptedPagesShadowIndexPath
+      : "static/encryptedContentIndex.json";
   const scripts = document.querySelectorAll("script");
   for (const script of scripts) {
     const text = script.textContent ?? "";
     const match = text.match(/fetch\(["']([^"']+contentIndex\.json)["']\)/);
     if (match) {
+      // Quartz fetches `<path to the site root>static/contentIndex.json`
+      const root = match[1].match(/^(.*?)static\/contentIndex\.json$/);
+      if (root) return root[1] + configured;
       return match[1].replace(/contentIndex\.json$/, "encryptedContentIndex.json");
     }
   }
-  return new URL("static/encryptedContentIndex.json", document.baseURI).toString();
+  return new URL(configured, document.baseURI).toString();
 }
 
 let shadowIndexPromise = null;
